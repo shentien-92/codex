@@ -3,7 +3,7 @@
   "name": "ws-reconnecting-diagnostics-prd",
   "title": "WS reconnecting diagnostics PRD",
   "description": "Add structured diagnostics for frequent Responses WebSocket reconnecting in Ralph's private Codex debug build.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": "codex",

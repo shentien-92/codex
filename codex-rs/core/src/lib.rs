@@ -177,6 +177,7 @@ pub use attestation::AttestationProvider;
 pub use attestation::GenerateAttestationFuture;
 pub use client::ModelClient;
 pub use client::ModelClientSession;
+pub use client::ModelClientStreamRequestKind;
 pub use client::X_CODEX_INSTALLATION_ID_HEADER;
 pub use client::X_CODEX_TURN_METADATA_HEADER;
 pub use client_common::Prompt;

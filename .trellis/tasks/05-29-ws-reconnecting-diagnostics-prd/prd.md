@@ -158,4 +158,11 @@ rg "websocket|Reconnecting|retrying request|fallback" /tmp/codex-ws-debug-log/co
 
 ## Current Known Patch
 
-As of this PRD, `responses_retry.rs` already has retry-loop fields for `turn_id`, retry counts, delay, HTTP status, WebSocket enabled state, and concrete error text. The remaining work is to add connection/request lifecycle logs around the WebSocket transport itself.
+As of the debug implementation:
+
+- `responses_retry.rs` logs retry-loop fields for `turn_id`, retry counts, delay, HTTP status, WebSocket enabled state, and concrete error text.
+- `client.rs` logs WebSocket connection open/success/failure, connection reuse vs new connection, preconnect skip/start/success, stream request send/accepted/failure, incremental payload usage, warmup vs normal request, request kind, and fallback reset.
+- `session_startup_prewarm.rs` logs startup prewarm scheduling, completion, timeout, cancellation, readiness, setup failure, and warmup completion.
+- `ModelClientStreamRequestKind` labels stream calls as `sampling`, `local_compaction`, or `remote_compaction_v2`, so transport logs can distinguish ordinary turns from compaction requests.
+
+The remaining validation step is to reproduce a real `Reconnecting...` event in Ralph's local debug TUI and inspect `/tmp/codex-ws-debug-log/codex-tui.log`.

@@ -1,5 +1,6 @@
 use codex_core::CodexThread;
 use codex_core::ModelClient;
+use codex_core::ModelClientStreamRequestKind;
 use codex_core::NewThread;
 use codex_core::Prompt;
 use codex_core::ResponseEvent;
@@ -196,6 +197,7 @@ impl MemoryStartupContext {
                 context.reasoning_summary,
                 context.service_tier.clone(),
                 context.turn_metadata_header.as_deref(),
+                ModelClientStreamRequestKind::Sampling,
                 &InferenceTraceContext::disabled(),
             )
             .await?;

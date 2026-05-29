@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use crate::Prompt;
 use crate::client::ModelClientSession;
+use crate::client::ModelClientStreamRequestKind;
 use crate::client_common::ResponseEvent;
 use crate::hook_runtime::PostCompactHookOutcome;
 use crate::hook_runtime::PreCompactHookOutcome;
@@ -553,6 +554,7 @@ async fn drain_to_completed(
             turn_context.reasoning_summary,
             turn_context.config.service_tier.clone(),
             turn_metadata_header,
+            ModelClientStreamRequestKind::LocalCompaction,
             // Rollout tracing currently models remote compaction only; local compaction streams
             // are left untraced until the reducer has a first-class local compaction lifecycle.
             &InferenceTraceContext::disabled(),

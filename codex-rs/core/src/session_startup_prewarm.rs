@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
@@ -70,7 +71,14 @@ impl SessionStartupPrewarmHandle {
                 Some(Ok(result)) => Self::resolution_from_join_result(result, started_at),
                 Some(Err(_elapsed)) => {
                     task.abort();
-                    info!("startup websocket prewarm timed out before the first turn could use it");
+                    info!(
+                        request_kind = "prewarm",
+                        transport = "responses_websocket",
+                        age_ms = age_at_first_turn.as_millis() as u64,
+                        timeout_ms = timeout.as_millis() as u64,
+                        remaining_ms = remaining.as_millis() as u64,
+                        "startup websocket prewarm timed out before the first turn could use it"
+                    );
                     SessionStartupPrewarmResolution::Unavailable {
                         status: "timed_out",
                         prewarm_duration: Some(started_at.elapsed()),
@@ -78,6 +86,13 @@ impl SessionStartupPrewarmHandle {
                 }
                 None => {
                     task.abort();
+                    debug!(
+                        request_kind = "prewarm",
+                        transport = "responses_websocket",
+                        age_ms = age_at_first_turn.as_millis() as u64,
+                        timeout_ms = timeout.as_millis() as u64,
+                        "startup websocket prewarm resolution cancelled"
+                    );
                     session_telemetry.record_startup_phase(
                         "startup_prewarm_resolve",
                         resolve_started_at.elapsed(),
@@ -150,17 +165,35 @@ impl SessionStartupPrewarmHandle {
     ) -> SessionStartupPrewarmResolution {
         match result {
             Ok(Ok(prewarmed_session)) => {
+                debug!(
+                    request_kind = "prewarm",
+                    transport = "responses_websocket",
+                    duration_ms = started_at.elapsed().as_millis() as u64,
+                    "startup websocket prewarm ready"
+                );
                 SessionStartupPrewarmResolution::Ready(Box::new(prewarmed_session))
             }
             Ok(Err(err)) => {
-                warn!("startup websocket prewarm setup failed: {err:#}");
+                warn!(
+                    request_kind = "prewarm",
+                    transport = "responses_websocket",
+                    duration_ms = started_at.elapsed().as_millis() as u64,
+                    error = %err,
+                    "startup websocket prewarm setup failed"
+                );
                 SessionStartupPrewarmResolution::Unavailable {
                     status: "failed",
                     prewarm_duration: None,
                 }
             }
             Err(err) => {
-                warn!("startup websocket prewarm setup join failed: {err}");
+                warn!(
+                    request_kind = "prewarm",
+                    transport = "responses_websocket",
+                    duration_ms = started_at.elapsed().as_millis() as u64,
+                    error = %err,
+                    "startup websocket prewarm setup join failed"
+                );
                 SessionStartupPrewarmResolution::Unavailable {
                     status: "join_failed",
                     prewarm_duration: Some(started_at.elapsed()),
@@ -175,11 +208,24 @@ impl Session {
         let session_telemetry = self.services.session_telemetry.clone();
         let websocket_connect_timeout = self.provider().await.websocket_connect_timeout();
         let started_at = Instant::now();
+        debug!(
+            request_kind = "prewarm",
+            transport = "responses_websocket",
+            timeout_ms = websocket_connect_timeout.as_millis() as u64,
+            "scheduling startup websocket prewarm"
+        );
         let startup_prewarm_session = Arc::clone(self);
         let startup_prewarm = tokio::spawn(async move {
             let result =
                 schedule_startup_prewarm_inner(startup_prewarm_session, base_instructions).await;
             let status = if result.is_ok() { "ready" } else { "failed" };
+            debug!(
+                request_kind = "prewarm",
+                transport = "responses_websocket",
+                status,
+                duration_ms = started_at.elapsed().as_millis() as u64,
+                "startup websocket prewarm task completed"
+            );
             session_telemetry.record_startup_phase(
                 "startup_prewarm_total",
                 started_at.elapsed(),
@@ -205,6 +251,12 @@ impl Session {
         cancellation_token: &CancellationToken,
     ) -> SessionStartupPrewarmResolution {
         let Some(startup_prewarm) = self.take_session_startup_prewarm().await else {
+            debug!(
+                request_kind = "prewarm",
+                transport = "responses_websocket",
+                status = "not_scheduled",
+                "startup websocket prewarm unavailable for regular turn"
+            );
             return SessionStartupPrewarmResolution::Unavailable {
                 status: "not_scheduled",
                 prewarm_duration: None,
@@ -224,6 +276,13 @@ async fn schedule_startup_prewarm_inner(
     let startup_turn_context = session
         .new_default_turn_with_sub_id(INITIAL_SUBMIT_ID.to_owned())
         .await;
+    debug!(
+        turn_id = %startup_turn_context.sub_id,
+        model = %startup_turn_context.model_info.slug,
+        request_kind = "prewarm",
+        transport = "responses_websocket",
+        "created startup prewarm turn context"
+    );
     startup_turn_context.session_telemetry.record_startup_phase(
         "startup_prewarm_create_turn_context",
         prewarm_started_at.elapsed(),
@@ -273,6 +332,14 @@ async fn schedule_startup_prewarm_inner(
             startup_turn_metadata_header.as_deref(),
         )
         .await?;
+    debug!(
+        turn_id = %startup_turn_context.sub_id,
+        model = %startup_turn_context.model_info.slug,
+        request_kind = "prewarm",
+        transport = "responses_websocket",
+        duration_ms = websocket_warmup_started_at.elapsed().as_millis() as u64,
+        "startup websocket warmup completed"
+    );
     startup_turn_context.session_telemetry.record_startup_phase(
         "startup_prewarm_websocket_warmup",
         websocket_warmup_started_at.elapsed(),

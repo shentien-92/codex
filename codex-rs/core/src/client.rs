@@ -285,6 +285,23 @@ enum WebsocketStreamOutcome {
     FallbackToHttp,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ModelClientStreamRequestKind {
+    Sampling,
+    LocalCompaction,
+    RemoteCompactionV2,
+}
+
+impl ModelClientStreamRequestKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Sampling => "sampling",
+            Self::LocalCompaction => "local_compaction",
+            Self::RemoteCompactionV2 => "remote_compaction_v2",
+        }
+    }
+}
+
 /// Result of opening a WebRTC Realtime call.
 ///
 /// The SDP answer goes back to the client. The call id and auth headers stay on the server so the
@@ -415,7 +432,14 @@ impl ModelClient {
         let activated =
             websocket_enabled && !self.state.disable_websockets.swap(true, Ordering::Relaxed);
         if activated {
-            warn!("falling back to HTTP");
+            warn!(
+                model = %_model_info.slug,
+                provider = %self.state.provider.info().name,
+                transport = "https_fallback",
+                from_transport = "responses_websocket",
+                responses_websocket_enabled = websocket_enabled,
+                "falling back from responses websocket to HTTP"
+            );
             session_telemetry.counter(
                 "codex.transport.fallback_to_http",
                 /*inc*/ 1,
@@ -827,6 +851,16 @@ impl ModelClient {
         );
         let websocket_connect_timeout = self.state.provider.info().websocket_connect_timeout();
         let start = Instant::now();
+        debug!(
+            provider = %self.state.provider.info().name,
+            api_provider = %api_provider.name,
+            transport = "responses_websocket",
+            endpoint = request_route_telemetry.endpoint,
+            timeout_ms = websocket_connect_timeout.as_millis() as u64,
+            turn_state_present = turn_state.as_ref().is_some(),
+            turn_metadata_header_present = turn_metadata_header.is_some(),
+            "opening responses websocket connection"
+        );
         let result = match tokio::time::timeout(
             websocket_connect_timeout,
             ApiWebSocketResponsesClient::new(api_provider, api_auth).connect(
@@ -864,6 +898,36 @@ impl ModelClient {
             response_debug.auth_error.as_deref(),
             response_debug.auth_error_code.as_deref(),
         );
+        let duration_ms = start.elapsed().as_millis() as u64;
+        match &result {
+            Ok(_) => {
+                debug!(
+                    provider = %self.state.provider.info().name,
+                    transport = "responses_websocket",
+                    endpoint = request_route_telemetry.endpoint,
+                    duration_ms,
+                    timeout_ms = websocket_connect_timeout.as_millis() as u64,
+                    http_status_code = ?status,
+                    request_id = ?response_debug.request_id.as_deref(),
+                    cf_ray = ?response_debug.cf_ray.as_deref(),
+                    "responses websocket connection opened"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    provider = %self.state.provider.info().name,
+                    transport = "responses_websocket",
+                    endpoint = request_route_telemetry.endpoint,
+                    duration_ms,
+                    timeout_ms = websocket_connect_timeout.as_millis() as u64,
+                    http_status_code = ?status,
+                    request_id = ?response_debug.request_id.as_deref(),
+                    cf_ray = ?response_debug.cf_ray.as_deref(),
+                    error = %err,
+                    "responses websocket connection failed"
+                );
+            }
+        }
         emit_feedback_request_tags_with_auth_env(
             &FeedbackRequestTags {
                 endpoint: request_route_telemetry.endpoint,
@@ -1082,20 +1146,54 @@ impl ModelClientSession {
     pub async fn preconnect_websocket(
         &mut self,
         session_telemetry: &SessionTelemetry,
-        _model_info: &ModelInfo,
+        model_info: &ModelInfo,
     ) -> std::result::Result<(), ApiError> {
         if !self.client.responses_websocket_enabled() {
+            debug!(
+                model = %model_info.slug,
+                provider = %self.client.state.provider.info().name,
+                request_kind = "preconnect",
+                transport = "responses_websocket",
+                responses_websocket_enabled = false,
+                "skipping websocket preconnect because websocket transport is disabled"
+            );
             return Ok(());
         }
         if self.websocket_session.connection.is_some() {
+            debug!(
+                model = %model_info.slug,
+                provider = %self.client.state.provider.info().name,
+                request_kind = "preconnect",
+                transport = "responses_websocket",
+                connection_reused = true,
+                "skipping websocket preconnect because a connection is already available"
+            );
             return Ok(());
         }
 
-        let client_setup = self.client.current_client_setup().await.map_err(|err| {
-            ApiError::Stream(format!(
-                "failed to build websocket prewarm client setup: {err}"
-            ))
-        })?;
+        debug!(
+            model = %model_info.slug,
+            provider = %self.client.state.provider.info().name,
+            request_kind = "preconnect",
+            transport = "responses_websocket",
+            "starting websocket preconnect"
+        );
+        let client_setup = match self.client.current_client_setup().await {
+            Ok(client_setup) => client_setup,
+            Err(err) => {
+                warn!(
+                    model = %model_info.slug,
+                    provider = %self.client.state.provider.info().name,
+                    request_kind = "preconnect",
+                    transport = "responses_websocket",
+                    error = %err,
+                    "failed to build websocket preconnect client setup"
+                );
+                return Err(ApiError::Stream(format!(
+                    "failed to build websocket prewarm client setup: {err}"
+                )));
+            }
+        };
         let auth_context = AuthRequestTelemetryContext::new(
             client_setup.auth.as_ref().map(CodexAuth::auth_mode),
             client_setup.api_auth.as_ref(),
@@ -1116,6 +1214,14 @@ impl ModelClientSession {
         self.websocket_session.connection = Some(connection);
         self.websocket_session
             .set_connection_reused(/*connection_reused*/ false);
+        debug!(
+            model = %model_info.slug,
+            provider = %self.client.state.provider.info().name,
+            request_kind = "preconnect",
+            transport = "responses_websocket",
+            connection_reused = false,
+            "websocket preconnect succeeded"
+        );
         Ok(())
     }
     /// Returns a websocket connection for this turn.
@@ -1144,10 +1250,21 @@ impl ModelClientSession {
             auth_context,
             request_route_telemetry,
         } = params;
-        let needs_new = match self.websocket_session.connection.as_ref() {
-            Some(conn) => conn.is_closed().await,
-            None => true,
+        let existing_connection_closed = match self.websocket_session.connection.as_ref() {
+            Some(conn) => Some(conn.is_closed().await),
+            None => None,
         };
+        let needs_new = existing_connection_closed.unwrap_or(true);
+        debug!(
+            provider = %self.client.state.provider.info().name,
+            transport = "responses_websocket",
+            endpoint = request_route_telemetry.endpoint,
+            existing_connection = existing_connection_closed.is_some(),
+            existing_connection_closed = ?existing_connection_closed,
+            needs_new_connection = needs_new,
+            turn_metadata_header_present = turn_metadata_header.is_some(),
+            "resolved responses websocket connection state"
+        );
 
         if needs_new {
             self.websocket_session.last_request = None;
@@ -1172,6 +1289,13 @@ impl ModelClientSession {
             {
                 Ok(new_conn) => new_conn,
                 Err(err) => {
+                    warn!(
+                        provider = %self.client.state.provider.info().name,
+                        transport = "responses_websocket",
+                        endpoint = request_route_telemetry.endpoint,
+                        error = %err,
+                        "failed to create responses websocket connection for turn"
+                    );
                     if matches!(err, ApiError::Transport(TransportError::Timeout)) {
                         self.reset_websocket_session();
                     }
@@ -1181,9 +1305,23 @@ impl ModelClientSession {
             self.websocket_session.connection = Some(new_conn);
             self.websocket_session
                 .set_connection_reused(/*connection_reused*/ false);
+            debug!(
+                provider = %self.client.state.provider.info().name,
+                transport = "responses_websocket",
+                endpoint = request_route_telemetry.endpoint,
+                connection_reused = false,
+                "using new responses websocket connection"
+            );
         } else {
             self.websocket_session
                 .set_connection_reused(/*connection_reused*/ true);
+            debug!(
+                provider = %self.client.state.provider.info().name,
+                transport = "responses_websocket",
+                endpoint = request_route_telemetry.endpoint,
+                connection_reused = true,
+                "reusing existing responses websocket connection"
+            );
         }
 
         self.websocket_session
@@ -1345,6 +1483,7 @@ impl ModelClientSession {
         service_tier: Option<String>,
         turn_metadata_header: Option<&str>,
         warmup: bool,
+        request_kind: ModelClientStreamRequestKind,
         request_trace: Option<W3cTraceContext>,
         inference_trace: &InferenceTraceContext,
     ) -> Result<WebsocketStreamOutcome> {
@@ -1423,6 +1562,13 @@ impl ModelClientSession {
 
             let (mut ws_request, previous_response_id_from_untraced_warmup) =
                 self.prepare_websocket_request(ws_payload, &request);
+            let incremental_payload = match &ws_request {
+                ResponsesWsRequest::ResponseCreate(request) => {
+                    request.previous_response_id.is_some()
+                }
+                ResponsesWsRequest::ResponseProcessed(_) => false,
+            };
+            let connection_reused = self.websocket_session.connection_reused();
             let inference_trace_attempt = if warmup {
                 // Prewarm sends `generate=false`; it is connection setup, not a
                 // model inference attempt that should appear in rollout traces.
@@ -1447,20 +1593,63 @@ impl ModelClientSession {
                         "websocket connection is unavailable".to_string(),
                     ))
                 })?;
-            let stream_result = websocket_connection
-                .stream_request(ws_request, self.websocket_session.connection_reused())
+            debug!(
+                model = %model_info.slug,
+                provider = %self.client.state.provider.info().name,
+                request_kind = if warmup { "prewarm" } else { request_kind.as_str() },
+                transport = "responses_websocket",
+                warmup,
+                connection_reused,
+                incremental_payload,
+                previous_response_id_from_untraced_warmup,
+                "sending responses websocket stream request"
+            );
+            let stream_started_at = Instant::now();
+            let stream_result = match websocket_connection
+                .stream_request(ws_request, connection_reused)
                 .await
-                .map_err(|err| {
+            {
+                Ok(stream_result) => {
+                    debug!(
+                        model = %model_info.slug,
+                        provider = %self.client.state.provider.info().name,
+                        request_kind = if warmup { "prewarm" } else { request_kind.as_str() },
+                        transport = "responses_websocket",
+                        warmup,
+                        connection_reused,
+                        incremental_payload,
+                        duration_ms = stream_started_at.elapsed().as_millis() as u64,
+                        "responses websocket stream request accepted"
+                    );
+                    stream_result
+                }
+                Err(err) => {
                     let response_debug_context =
                         extract_response_debug_context_from_api_error(&err);
+                    warn!(
+                        model = %model_info.slug,
+                        provider = %self.client.state.provider.info().name,
+                        request_kind = if warmup { "prewarm" } else { request_kind.as_str() },
+                        transport = "responses_websocket",
+                        warmup,
+                        connection_reused,
+                        incremental_payload,
+                        duration_ms = stream_started_at.elapsed().as_millis() as u64,
+                        http_status_code = ?api_error_http_status(&err),
+                        request_id = ?response_debug_context.request_id.as_deref(),
+                        cf_ray = ?response_debug_context.cf_ray.as_deref(),
+                        error = %err,
+                        "responses websocket stream request failed"
+                    );
                     let err = map_api_error(err);
                     inference_trace_attempt.record_failed(
                         &err,
                         response_debug_context.request_id.as_deref(),
                         /*output_items*/ &[],
                     );
-                    err
-                })?;
+                    return Err(err);
+                }
+            };
             let (stream, last_request_rx) = map_response_stream(
                 stream_result,
                 session_telemetry.clone(),
@@ -1535,6 +1724,7 @@ impl ModelClientSession {
                 service_tier,
                 turn_metadata_header,
                 /*warmup*/ true,
+                ModelClientStreamRequestKind::Sampling,
                 current_span_w3c_trace_context(),
                 &disabled_trace,
             )
@@ -1577,6 +1767,7 @@ impl ModelClientSession {
         summary: ReasoningSummaryConfig,
         service_tier: Option<String>,
         turn_metadata_header: Option<&str>,
+        request_kind: ModelClientStreamRequestKind,
         inference_trace: &InferenceTraceContext,
     ) -> Result<ResponseStream> {
         let wire_api = self.client.state.provider.info().wire_api;
@@ -1594,6 +1785,7 @@ impl ModelClientSession {
                             service_tier.clone(),
                             turn_metadata_header,
                             /*warmup*/ false,
+                            request_kind,
                             request_trace,
                             inference_trace,
                         )
@@ -1635,6 +1827,14 @@ impl ModelClientSession {
         let activated = self
             .client
             .force_http_fallback(session_telemetry, model_info);
+        debug!(
+            model = %model_info.slug,
+            provider = %self.client.state.provider.info().name,
+            transport = "https_fallback",
+            from_transport = "responses_websocket",
+            fallback_activated = activated,
+            "reset websocket session after fallback transport switch"
+        );
         self.websocket_session = WebsocketSession::default();
         activated
     }

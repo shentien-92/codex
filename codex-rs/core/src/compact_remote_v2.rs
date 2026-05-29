@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::Prompt;
 use crate::ResponseStream;
 use crate::client::ModelClientSession;
+use crate::client::ModelClientStreamRequestKind;
 use crate::client_common::ResponseEvent;
 use crate::compact::CompactionAnalyticsAttempt;
 use crate::compact::InitialContextInjection;
@@ -310,6 +311,7 @@ async fn run_remote_compaction_request_v2(
                 turn_context.reasoning_summary,
                 turn_context.config.service_tier.clone(),
                 turn_metadata_header,
+                ModelClientStreamRequestKind::RemoteCompactionV2,
                 &InferenceTraceContext::disabled(),
             )
             .await

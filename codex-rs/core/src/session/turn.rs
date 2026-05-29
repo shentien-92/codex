@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use crate::SkillInjections;
 use crate::build_skill_injections;
 use crate::client::ModelClientSession;
+use crate::client::ModelClientStreamRequestKind;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::collect_explicit_skill_mentions;
@@ -1715,6 +1716,7 @@ async fn try_run_sampling_request(
             turn_context.reasoning_summary,
             turn_context.config.service_tier.clone(),
             turn_metadata_header,
+            ModelClientStreamRequestKind::Sampling,
             &inference_trace,
         )
         .instrument(trace_span!("stream_request"))

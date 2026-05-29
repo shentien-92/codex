@@ -54,7 +54,15 @@ pub(crate) async fn handle_retryable_response_stream_error(
             }
             _ => backoff(retry_count),
         };
-        log_retry(request, turn_context, &err, retry_count, max_retries, delay);
+        log_retry(
+            request,
+            turn_context,
+            &err,
+            retry_count,
+            max_retries,
+            delay,
+            sess.services.model_client.responses_websocket_enabled(),
+        );
 
         // In release builds, hide the first websocket retry notification to reduce noisy
         // transient reconnect messages. In debug builds, keep full visibility for diagnosis.
@@ -85,11 +93,19 @@ fn log_retry(
     retries: u64,
     max_retries: u64,
     delay: Duration,
+    responses_websocket_enabled: bool,
 ) {
     match request {
         ResponsesStreamRequest::Sampling => {
             warn!(
-                "stream disconnected - retrying sampling request ({retries}/{max_retries} in {delay:?})...",
+                turn_id = %turn_context.sub_id,
+                retries,
+                max_retries,
+                delay_ms = delay.as_millis() as u64,
+                http_status_code = ?err.http_status_code_value(),
+                responses_websocket_enabled,
+                stream_error = %err,
+                "sampling response stream failed; retrying request after delay"
             );
         }
         ResponsesStreamRequest::RemoteCompactionV2 => {
@@ -97,6 +113,9 @@ fn log_retry(
                 turn_id = %turn_context.sub_id,
                 retries,
                 max_retries,
+                delay_ms = delay.as_millis() as u64,
+                http_status_code = ?err.http_status_code_value(),
+                responses_websocket_enabled,
                 compact_error = %err,
                 "remote compaction v2 stream failed; retrying request after delay"
             );
