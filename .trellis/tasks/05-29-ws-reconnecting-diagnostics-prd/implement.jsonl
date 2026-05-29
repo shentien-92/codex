@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/codex/frontend/index.md", "reason": "Package/spec entry point for Codex CLI work in this repo."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "WebSocket reconnect diagnostics cross config, model client transport, session retry, and TUI status layers."}

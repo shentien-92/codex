@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/codex/frontend/index.md", "reason": "Check package-level expectations before finalizing CLI/private-build changes."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify correlation fields and errors flow across transport/session/TUI boundaries."}
