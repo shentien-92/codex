@@ -164,4 +164,16 @@ As of the debug implementation:
 - `session_startup_prewarm.rs` logs startup prewarm scheduling, completion, timeout, cancellation, readiness, setup failure, and warmup completion.
 - `ModelClientStreamRequestKind` labels stream calls as `sampling`, `local_compaction`, or `remote_compaction_v2`, so transport logs can distinguish ordinary turns from compaction requests.
 
-The remaining validation step is to reproduce a real `Reconnecting...` event in Ralph's local debug TUI and inspect `~/.codex/log/codex-tui.log`.
+Local validation on 2026-05-29:
+
+- Codex debug logs showed successful local WebSocket handshakes and accepted stream requests, followed by server-side close after about 12.5s without `response.completed`.
+- The failed Codex turn used `connection_reused=false` and `incremental_payload=false`, so the observed retry was not caused by stale client-side connection reuse or WebSocket delta payload construction.
+- The configured provider target was Ralph's `sub2api` host at `10.10.21.74`.
+- `sub2api` logs for the same time window showed `openai.websocket_proxy_failed` and `ingress_ws_upstream_acquire_fail`, including `1013 upstream websocket is busy, please retry later: context deadline exceeded`.
+- Nearby `sub2api` logs also showed upstream preflight ping failures through `127.0.0.1:10808` with `broken pipe`.
+
+Conclusion: the reproduced reconnect loop is a `sub2api` upstream WebSocket pool/proxy stability issue, not a Codex TUI render issue and not a local Codex WebSocket handshake failure.
+
+Codex follow-up captured during validation:
+
+- Avoid logging entire provider structs at debug level because they can include bearer tokens. Session startup debug logging should emit only non-secret provider fields.

@@ -503,9 +503,13 @@ impl Session {
         attestation_provider: Option<Arc<dyn AttestationProvider>>,
     ) -> anyhow::Result<Arc<Self>> {
         debug!(
-            "Configuring session: model={}; provider={:?}",
-            session_configuration.collaboration_mode.model(),
-            session_configuration.provider
+            model = %session_configuration.collaboration_mode.model(),
+            provider = %session_configuration.provider.name,
+            base_url = ?session_configuration.provider.base_url,
+            wire_api = %session_configuration.provider.wire_api,
+            requires_openai_auth = session_configuration.provider.requires_openai_auth,
+            supports_websockets = session_configuration.provider.supports_websockets,
+            "configuring session"
         );
         let forked_from_id = session_configuration
             .forked_from_thread_id
