@@ -14,6 +14,8 @@ Current startup UX treats MCP initialization as part of the bottom-pane task-run
 
 This is confusing because no agent turn is actually running. In the screenshot-driven case, the UI is blocked by `Starting MCP servers (10/11): computer-use`, not by model work.
 
+The same class of stall can also affect spawned sub-agents. A parent session may be waiting for a spawned agent while the child session starts its own MCP servers, and the visible status can remain on a slow server such as `confluence-mcp` for several minutes. The fix must therefore cover both the main interactive session and sub-agent sessions that construct their own tool routers.
+
 ## What I already know
 
 - The TUI derives the bottom-pane "task running" flag from both `agent_turn_running` and `mcp_startup_status.is_some()` in `codex-rs/tui/src/chatwidget/turn_runtime.rs`.
@@ -24,6 +26,7 @@ This is confusing because no agent turn is actually running. In the screenshot-d
 - First-turn tool construction still calls `McpConnectionManager::list_all_tools().await`. If a server has no startup snapshot/cache, listing tools can still wait for that server's client startup.
 - `AsyncManagedClient::listed_tools()` can return startup snapshot tools while a server is initializing, and falls back to a snapshot if startup fails.
 - Existing required MCP server handling still waits for required servers during session initialization and reports startup failures.
+- Spawned agents can initialize MCP independently from the parent session, so main-session-only UI changes are not sufficient.
 - This work is being developed in Ralph's private local Codex build based on the `rust-v0.135.0` release line. Do not pull from a feature/main branch with unrelated in-flight product changes.
 - The local npm-installed `codex` command may be symlinked to the debug binary during validation. Treat this as intentional for private-build acceptance testing.
 - For this private build, update UX is intentionally disabled: no proactive update prompt, and manual `codex update` should not perform an update. Future updates are local merges plus conflict resolution plus local rebuild.
@@ -84,6 +87,7 @@ This matters for the MCP startup task because `/resume` is one of the primary lo
 - MCP tools from servers that are still starting and have no snapshot/cache should be omitted from the current turn.
 - Once a delayed MCP server becomes ready, its tools should become available to later turns without requiring a full TUI restart.
 - If the user requests a tool from a still-starting MCP server, the UX should make the limitation understandable instead of presenting a generic task-running rejection.
+- The same nonblocking optional-MCP behavior must apply when constructing tools for spawned sub-agent turns.
 
 ### Required MCP Servers
 
@@ -111,6 +115,7 @@ This matters for the MCP startup task because `/resume` is one of the primary lo
 - [ ] Starting the TUI with a slow optional MCP server still shows MCP startup progress, but `/resume` no longer emits "disabled while a task is in progress" solely because of MCP startup.
 - [ ] Slash-command gating distinguishes agent-turn-running from MCP-startup-running.
 - [ ] Submitting a normal prompt while optional MCP startup is in progress can start the turn without waiting for every optional MCP server.
+- [ ] A spawned sub-agent can begin a turn without waiting for every optional MCP server that is still starting.
 - [ ] The first model request includes ready MCP tools and cached/snapshot tools where available, but omits unavailable non-required MCP tools.
 - [ ] Delayed MCP tools are available in a later turn after startup completes.
 - [ ] Required MCP server failures still block or fail according to current required-server behavior.
@@ -198,6 +203,7 @@ When a turn starts before all optional MCP servers are ready, the model only see
   - `codex-rs/core/src/session/turn.rs`
   - `codex-rs/core/src/session/mcp.rs`
 - This task crosses UI state, session startup, and tool-router construction, so use the cross-layer thinking guide before implementation.
+- Multi-agent/spawned-agent paths are in scope because they construct turns through the same or similar MCP tool-router path and can surface the same slow optional-server stall.
 - There are many existing dirty files in the worktree. Implementation should avoid reverting or bundling unrelated changes.
 - Useful local debugging command shape:
 
