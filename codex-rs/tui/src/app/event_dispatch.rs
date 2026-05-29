@@ -75,15 +75,25 @@ impl App {
                         return Ok(AppRunControl::Continue);
                     }
                 };
-                match crate::resume_picker::run_resume_picker_from_existing_session_with_app_server(
+                let picker_selection =
+                    match crate::resume_picker::run_resume_picker_from_existing_session_with_app_server(
                     tui,
                     &self.config,
                     /*show_all*/ false,
                     /*include_non_interactive*/ false,
                     picker_app_server,
                 )
-                .await?
-                {
+                    .await
+                    {
+                        Ok(selection) => selection,
+                        Err(err) => {
+                            self.chat_widget.add_error_message(format!(
+                                "Failed to run TUI session picker: {err}"
+                            ));
+                            return Ok(AppRunControl::Continue);
+                        }
+                    };
+                match picker_selection {
                     SessionSelection::Resume(target_session) => {
                         match self
                             .resume_target_session(tui, app_server, target_session)

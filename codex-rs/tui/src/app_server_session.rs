@@ -427,6 +427,28 @@ impl AppServerSession {
         let mut started =
             started_thread_from_resume_response(response, &config, self.thread_params_mode())
                 .await?;
+        match self
+            .thread_read(started.session.thread_id, /*include_turns*/ true)
+            .await
+        {
+            Ok(thread) if thread.turns.len() > started.turns.len() => {
+                tracing::debug!(
+                    thread_id = %started.session.thread_id,
+                    resume_turns = started.turns.len(),
+                    read_turns = thread.turns.len(),
+                    "using fuller thread/read history for resumed thread"
+                );
+                started.turns = thread.turns;
+            }
+            Ok(_) => {}
+            Err(err) => {
+                tracing::debug!(
+                    thread_id = %started.session.thread_id,
+                    error = %err,
+                    "thread/read includeTurns failed after resume; keeping resume response history"
+                );
+            }
+        }
         started.session.fork_parent_title = fork_parent_title;
         Ok(started)
     }

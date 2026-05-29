@@ -225,6 +225,10 @@ impl App {
         current_cwd: &Path,
         resume_cwd: PathBuf,
     ) -> Result<Config> {
+        if !crate::session_resume::cwds_differ(current_cwd, &resume_cwd) {
+            return Ok(self.fresh_session_config());
+        }
+
         match self.rebuild_config_for_cwd(resume_cwd.clone()).await {
             Ok(config) => Ok(config),
             Err(err) => {

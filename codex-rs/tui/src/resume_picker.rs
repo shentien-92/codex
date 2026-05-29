@@ -1299,11 +1299,19 @@ impl PickerState {
                     return Ok(());
                 }
                 self.pagination.loading = LoadingState::Idle;
-                let page = page.map_err(color_eyre::Report::from)?;
-                self.ingest_page(page);
-                self.complete_pending_page_down();
-                let completed_token = pending.search_token.or(search_token);
-                self.continue_search_if_token_matches(completed_token);
+                match page {
+                    Ok(page) => {
+                        self.inline_error = None;
+                        self.ingest_page(page);
+                        self.complete_pending_page_down();
+                        let completed_token = pending.search_token.or(search_token);
+                        self.continue_search_if_token_matches(completed_token);
+                    }
+                    Err(err) => {
+                        self.inline_error = Some(format!("Could not load sessions: {err}"));
+                        self.request_frame();
+                    }
+                }
             }
             BackgroundEvent::Preview { thread_id, preview } => {
                 self.transcript_previews.insert(

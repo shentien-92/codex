@@ -683,12 +683,18 @@ impl App {
                 CwdPromptAction::Resume,
                 /*allow_prompt*/ true,
             )
-            .await?
+            .await
             {
-                crate::session_resume::ResolveCwdOutcome::Continue(Some(cwd)) => cwd,
-                crate::session_resume::ResolveCwdOutcome::Continue(None) => current_cwd.clone(),
-                crate::session_resume::ResolveCwdOutcome::Exit => {
+                Ok(crate::session_resume::ResolveCwdOutcome::Continue(Some(cwd))) => cwd,
+                Ok(crate::session_resume::ResolveCwdOutcome::Continue(None)) => current_cwd.clone(),
+                Ok(crate::session_resume::ResolveCwdOutcome::Exit) => {
                     return Ok(AppRunControl::Exit(ExitReason::UserRequested));
+                }
+                Err(err) => {
+                    self.chat_widget.add_error_message(format!(
+                        "Failed to resolve working directory for resume: {err}"
+                    ));
+                    return Ok(AppRunControl::Continue);
                 }
             }
         };
