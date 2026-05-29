@@ -95,7 +95,7 @@ When a field is not available at a boundary, omit it rather than threading broad
 - [ ] Handshake failures include duration, timeout, sanitized endpoint identity, and error class/detail.
 - [ ] Server close/reset/protocol failures include the closest available close/error detail without leaking payload contents.
 - [ ] Fallback from WebSocket to HTTPS is logged once with the triggering error and retry count.
-- [ ] Debug validation can be run with `RUST_LOG=codex_core=debug,codex_tui=debug` and `-c log_dir=...`.
+- [ ] Debug validation can be run with `RUST_LOG=codex_core=debug,codex_tui=debug` without a `log_dir` override; the TUI writes `~/.codex/log/codex-tui.log`.
 - [ ] No tests/release build are required before Ralph accepts the debug behavior.
 
 ## Non-Goals
@@ -125,14 +125,13 @@ cd /Users/ralph/Coding/qunhe/maas-platform-merge-test
 
 TERM=xterm-256color \
 RUST_LOG=codex_core=debug,codex_tui=debug \
-/Users/ralph/Coding/shenty/codex/codex-rs/target/debug/codex \
-  -c log_dir=/tmp/codex-ws-debug-log
+/Users/ralph/Coding/shenty/codex/codex-rs/target/debug/codex resume --last
 ```
 
 6. Inspect:
 
 ```bash
-rg "websocket|Reconnecting|retrying request|fallback" /tmp/codex-ws-debug-log/codex-tui.log
+rg "websocket|Reconnecting|retrying request|fallback" ~/.codex/log/codex-tui.log
 ```
 
 ## Diagnostic Decision Tree
@@ -165,4 +164,4 @@ As of the debug implementation:
 - `session_startup_prewarm.rs` logs startup prewarm scheduling, completion, timeout, cancellation, readiness, setup failure, and warmup completion.
 - `ModelClientStreamRequestKind` labels stream calls as `sampling`, `local_compaction`, or `remote_compaction_v2`, so transport logs can distinguish ordinary turns from compaction requests.
 
-The remaining validation step is to reproduce a real `Reconnecting...` event in Ralph's local debug TUI and inspect `/tmp/codex-ws-debug-log/codex-tui.log`.
+The remaining validation step is to reproduce a real `Reconnecting...` event in Ralph's local debug TUI and inspect `~/.codex/log/codex-tui.log`.

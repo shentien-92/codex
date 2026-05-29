@@ -1192,7 +1192,9 @@ pub async fn run_main(
         }
     }
 
-    let (tui_file_layer, _tui_file_log_guard) = if config_toml.log_dir.is_some() {
+    let should_write_tui_log =
+        config_toml.log_dir.is_some() || std::env::var_os("RUST_LOG").is_some();
+    let (tui_file_layer, _tui_file_log_guard) = if should_write_tui_log {
         let log_dir = config.log_dir.clone();
         std::fs::create_dir_all(&log_dir)?;
         let mut log_file_opts = OpenOptions::new();
