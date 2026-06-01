@@ -6,14 +6,19 @@
 use super::*;
 
 impl ChatWidget {
-    /// Synchronize the bottom-pane "task running" indicator with the current lifecycles.
+    /// Synchronize the bottom-pane "task running" indicator with agent turn state.
     ///
-    /// The bottom pane only has one running flag, but this module treats it as a derived state of
-    /// both the agent turn lifecycle and MCP startup lifecycle.
+    /// MCP startup is a background readiness lifecycle. It may render progress
+    /// in the status indicator, but it must not make local commands behave as
+    /// though an agent turn is running.
     pub(super) fn update_task_running_state(&mut self) {
-        self.bottom_pane.set_task_running(
-            self.turn_lifecycle.agent_turn_running || self.mcp_startup_status.is_some(),
-        );
+        self.bottom_pane
+            .set_task_running(self.turn_lifecycle.agent_turn_running);
+        if self.mcp_startup_status.is_some() && !self.turn_lifecycle.agent_turn_running {
+            self.bottom_pane.ensure_status_indicator();
+            self.bottom_pane
+                .set_interrupt_hint_visible(/*visible*/ false);
+        }
         self.refresh_plan_mode_nudge();
         self.refresh_status_surfaces();
     }

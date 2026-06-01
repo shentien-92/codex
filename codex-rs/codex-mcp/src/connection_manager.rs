@@ -421,6 +421,45 @@ impl McpConnectionManager {
         normalize_tools_for_model_with_prefix(tools, self.prefix_mcp_tool_names)
     }
 
+    /// Returns currently usable tools without waiting for initializing servers.
+    ///
+    /// Servers that are ready contribute live tools. Servers that are still
+    /// starting contribute only startup snapshot tools, when available. Pending
+    /// servers without snapshots are omitted for this call and may appear in a
+    /// later turn after startup completes.
+    #[instrument(level = "trace", skip_all, fields(mcp_server_count = self.clients.len()))]
+    pub fn list_available_tools(&self) -> Vec<ToolInfo> {
+        let mut tools = Vec::new();
+        for (server_name, managed_client) in &self.clients {
+            let has_startup_snapshot = managed_client.startup_snapshot.is_some();
+            let startup_complete = managed_client
+                .startup_complete
+                .load(std::sync::atomic::Ordering::Acquire);
+            let Some(server_tools) = managed_client.listed_tools_if_available() else {
+                trace!(
+                    server_name = %server_name,
+                    has_startup_snapshot,
+                    startup_complete,
+                    "skipping pending MCP server tools while building available tool list"
+                );
+                continue;
+            };
+            trace!(
+                server_name = %server_name,
+                tool_count = server_tools.len(),
+                has_startup_snapshot,
+                startup_complete,
+                "listed available MCP server tools"
+            );
+            tools.extend(
+                server_tools
+                    .into_iter()
+                    .map(|tool| self.with_server_metadata(tool)),
+            );
+        }
+        normalize_tools_for_model_with_prefix(tools, self.prefix_mcp_tool_names)
+    }
+
     /// Force-refresh codex apps tools by bypassing the in-process cache.
     ///
     /// On success, the refreshed tools replace the cache contents and the

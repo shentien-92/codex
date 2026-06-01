@@ -840,6 +840,74 @@ async fn list_all_tools_blocks_while_client_is_pending_without_startup_snapshot(
     assert!(timeout_result.is_err());
 }
 
+#[test]
+fn list_available_tools_skips_pending_client_without_startup_snapshot() {
+    let pending_client = futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+        .boxed()
+        .shared();
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager = McpConnectionManager::new_uninitialized(
+        &approval_policy,
+        &permission_profile,
+        /*prefix_mcp_tool_names*/ true,
+    );
+    manager.clients.insert(
+        CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        AsyncManagedClient {
+            client: pending_client,
+            startup_snapshot: None,
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+
+    let tools = manager.list_available_tools();
+
+    assert!(tools.is_empty());
+}
+
+#[test]
+fn list_available_tools_uses_startup_snapshot_while_client_is_pending() {
+    let startup_tools = vec![create_test_tool(
+        CODEX_APPS_MCP_SERVER_NAME,
+        "calendar_create_event",
+    )];
+    let pending_client = futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+        .boxed()
+        .shared();
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager = McpConnectionManager::new_uninitialized(
+        &approval_policy,
+        &permission_profile,
+        /*prefix_mcp_tool_names*/ true,
+    );
+    manager.clients.insert(
+        CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        AsyncManagedClient {
+            client: pending_client,
+            startup_snapshot: Some(startup_tools),
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+
+    let tools = manager.list_available_tools();
+    let tool = tools
+        .iter()
+        .find(|tool| {
+            tool.canonical_tool_name()
+                == ToolName::namespaced("mcp__codex_apps", "calendar_create_event")
+        })
+        .expect("tool from startup cache");
+
+    assert_eq!(tool.server_name, CODEX_APPS_MCP_SERVER_NAME);
+    assert_eq!(tool.callable_name, "calendar_create_event");
+}
+
 #[tokio::test]
 async fn list_all_tools_does_not_block_when_startup_snapshot_cache_hit_is_empty() {
     let pending_client = futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()

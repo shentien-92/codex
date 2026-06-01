@@ -470,19 +470,11 @@ async fn build_skills_and_plugins(
         // Plugin mentions need raw MCP/app inventory even when app tools
         // are normally hidden so we can describe the plugin's currently
         // usable capabilities for this turn.
-        match sess
-            .services
+        sess.services
             .mcp_connection_manager
             .read()
             .await
-            .list_all_tools()
-            .or_cancel(cancellation_token)
-            .await
-        {
-            Ok(mcp_tools) => mcp_tools,
-            Err(_) if turn_context.apps_enabled() => return None,
-            Err(_) => Vec::new(),
-        }
+            .list_available_tools()
     } else {
         Vec::new()
     };
@@ -1006,10 +998,6 @@ async fn run_sampling_request(
     }
 }
 
-#[expect(
-    clippy::await_holding_invalid_type,
-    reason = "tool router construction reads through the session-owned manager guard"
-)]
 #[instrument(level = "trace",
     skip_all,
     fields(
@@ -1021,7 +1009,7 @@ async fn run_sampling_request(
 pub(crate) async fn built_tools(
     sess: &Session,
     turn_context: &TurnContext,
-    cancellation_token: &CancellationToken,
+    _cancellation_token: &CancellationToken,
 ) -> CodexResult<Arc<ToolRouter>> {
     let mcp_connection_manager = sess
         .services
@@ -1030,10 +1018,7 @@ pub(crate) async fn built_tools(
         .instrument(trace_span!("read_mcp_connection_manager"))
         .await;
     let has_mcp_servers = mcp_connection_manager.has_servers();
-    let all_mcp_tools = mcp_connection_manager
-        .list_all_tools()
-        .or_cancel(cancellation_token)
-        .await?;
+    let all_mcp_tools = mcp_connection_manager.list_available_tools();
     drop(mcp_connection_manager);
     let loaded_plugins = sess
         .services
