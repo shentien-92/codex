@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-05-29
+- **Total Sessions**: 2
+- **Last Active**: 2026-06-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~42 | Active |
+| `journal-1.md` | ~76 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-06-01 | Codex status line command | `af0b3d872`, `0f2b17363` | `ralph/rust-v0.135.0-custom` |
 | 1 | 2026-05-29 | WS reconnecting diagnostics | `226dfb187`, `1da1ff5fe`, `528e27905` | `ralph/rust-v0.135.0-custom` |
 <!-- @@@/auto:session-history -->
 

@@ -40,3 +40,37 @@ Added Codex WebSocket diagnostic logging, enabled debug file logging from RUST_L
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Codex status line command
+
+**Date**: 2026-06-01
+**Task**: Codex status line command
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Implemented command-backed multi-line TUI status line with trust-gated async runner, fallback semantics, schema/tests, MCP startup polish, and script-authoring skill guidance.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `af0b3d872` | (see git log) |
+| `0f2b17363` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
