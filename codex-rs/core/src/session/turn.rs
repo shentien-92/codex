@@ -433,10 +433,6 @@ async fn run_hooks_and_record_inputs(
     blocked_input && !accepted_user_input
 }
 
-#[expect(
-    clippy::await_holding_invalid_type,
-    reason = "MCP tool listing borrows the read guard across cancellation-aware await"
-)]
 async fn build_skills_and_plugins(
     sess: &Arc<Session>,
     turn_context: &TurnContext,
@@ -1011,15 +1007,18 @@ pub(crate) async fn built_tools(
     turn_context: &TurnContext,
     _cancellation_token: &CancellationToken,
 ) -> CodexResult<Arc<ToolRouter>> {
-    let mcp_connection_manager = sess
-        .services
-        .mcp_connection_manager
-        .read()
-        .instrument(trace_span!("read_mcp_connection_manager"))
-        .await;
-    let has_mcp_servers = mcp_connection_manager.has_servers();
-    let all_mcp_tools = mcp_connection_manager.list_available_tools();
-    drop(mcp_connection_manager);
+    let (has_mcp_servers, all_mcp_tools) = {
+        let mcp_connection_manager = sess
+            .services
+            .mcp_connection_manager
+            .read()
+            .instrument(trace_span!("read_mcp_connection_manager"))
+            .await;
+        (
+            mcp_connection_manager.has_servers(),
+            mcp_connection_manager.list_available_tools(),
+        )
+    };
     let loaded_plugins = sess
         .services
         .plugins_manager

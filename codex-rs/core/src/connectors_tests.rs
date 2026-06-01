@@ -9,25 +9,40 @@ use codex_config::CloudRequirementsLoader;
 use codex_config::ConfigLayerStack;
 use codex_config::ConfigRequirements;
 use codex_config::ConfigRequirementsToml;
+use codex_config::Constrained;
+use codex_config::McpServerConfig;
+use codex_config::McpServerTransportConfig;
 use codex_config::types::AppConfig;
 use codex_config::types::AppToolConfig;
 use codex_config::types::AppToolsConfig;
 use codex_config::types::AppsDefaultConfig;
+use codex_config::types::OAuthCredentialsStoreMode;
 use codex_connectors::merge::plugin_connector_to_app_info;
 use codex_connectors::metadata::connector_install_url;
 use codex_connectors::metadata::sanitize_name;
+use codex_exec_server::EnvironmentManager;
 use codex_features::Feature;
 use codex_login::CodexAuth;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
+use codex_mcp::EffectiveMcpServer;
+use codex_mcp::McpConnectionManager;
+use codex_mcp::McpRuntimeContext;
 use codex_mcp::ToolInfo;
+use codex_mcp::ToolPluginProvenance;
+use codex_mcp::codex_apps_tools_cache_key;
+use codex_protocol::models::PermissionProfile;
+use codex_protocol::protocol::AskForApproval;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use pretty_assertions::assert_eq;
+use rmcp::model::ElicitationCapability;
 use rmcp::model::JsonObject;
 use rmcp::model::Tool;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::tempdir;
 
 fn annotations(destructive_hint: Option<bool>, open_world_hint: Option<bool>) -> ToolAnnotations {
@@ -165,6 +180,92 @@ fn accessible_connectors_from_mcp_tools_carries_plugin_display_names() {
             plugin_display_names: plugin_names(&["beta", "sample"]),
         }]
     );
+}
+
+#[tokio::test]
+async fn list_accessible_and_enabled_connectors_does_not_wait_for_pending_mcp_startup() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind hanging MCP endpoint");
+    let url = format!(
+        "http://{}/mcp",
+        listener.local_addr().expect("listener local addr")
+    );
+    let server_task = tokio::spawn(async move {
+        let Ok((_socket, _addr)) = listener.accept().await else {
+            return;
+        };
+        futures::future::pending::<()>().await;
+    });
+
+    let mcp_servers = HashMap::from([(
+        CODEX_APPS_MCP_SERVER_NAME.to_string(),
+        EffectiveMcpServer::configured(McpServerConfig {
+            transport: McpServerTransportConfig::StreamableHttp {
+                url,
+                bearer_token_env_var: None,
+                http_headers: None,
+                env_http_headers: None,
+            },
+            environment_id: codex_config::DEFAULT_MCP_SERVER_ENVIRONMENT_ID.to_string(),
+            enabled: true,
+            required: false,
+            supports_parallel_tool_calls: false,
+            disabled_reason: None,
+            startup_timeout_sec: Some(Duration::from_secs(60)),
+            tool_timeout_sec: None,
+            default_tools_approval_mode: None,
+            enabled_tools: None,
+            disabled_tools: None,
+            scopes: None,
+            oauth: None,
+            oauth_resource: None,
+            tools: HashMap::new(),
+        }),
+    )]);
+    let (tx_event, rx_event) = async_channel::unbounded();
+    drop(rx_event);
+    let codex_home = tempdir().expect("tempdir");
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let (mut manager, cancel_token) = McpConnectionManager::new(
+        &mcp_servers,
+        OAuthCredentialsStoreMode::default(),
+        HashMap::new(),
+        &approval_policy,
+        String::new(),
+        tx_event,
+        PermissionProfile::default(),
+        McpRuntimeContext::new(
+            Arc::new(EnvironmentManager::without_environments()),
+            PathBuf::from("/tmp"),
+        ),
+        codex_home.path().to_path_buf(),
+        codex_apps_tools_cache_key(/*auth*/ None),
+        /*host_owned_codex_apps_enabled*/ false,
+        /*prefix_mcp_tool_names*/ true,
+        ElicitationCapability::default(),
+        ToolPluginProvenance::default(),
+        /*auth*/ None,
+        /*elicitation_reviewer*/ None,
+    )
+    .await;
+    let config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await
+        .expect("config should load");
+
+    let connectors = tokio::time::timeout(
+        Duration::from_millis(50),
+        list_accessible_and_enabled_connectors_from_manager(&manager, &config),
+    )
+    .await
+    .expect("connector listing should not wait for MCP startup");
+
+    assert!(connectors.is_empty());
+    cancel_token.cancel();
+    manager.shutdown().await;
+    server_task.abort();
 }
 
 #[tokio::test]
