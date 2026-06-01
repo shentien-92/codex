@@ -645,6 +645,22 @@ pub struct ModelAvailabilityNuxConfig {
 /// Fallback resize-reflow row cap when Codex cannot identify a terminal-specific scrollback size.
 pub const DEFAULT_TERMINAL_RESIZE_REFLOW_FALLBACK_MAX_ROWS: usize = 1_000;
 
+/// External command that replaces the built-in TUI status line.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct StatusLineCommandConfig {
+    /// Command argv to execute. Codex does not add an implicit shell.
+    pub command: Vec<String>,
+
+    /// Optional event-independent refresh cadence in milliseconds.
+    #[serde(default)]
+    pub refresh_interval_ms: Option<u64>,
+
+    /// Maximum number of stdout lines to render.
+    #[serde(default)]
+    pub max_lines: Option<usize>,
+}
+
 /// Collection of settings that are specific to the TUI.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -686,6 +702,11 @@ pub struct Tui {
     /// When unset, the TUI defaults to: `model-with-reasoning` and `current-dir`.
     #[serde(default)]
     pub status_line: Option<Vec<String>>,
+
+    /// External command that replaces the full TUI status line when configured in a trusted
+    /// workspace.
+    #[serde(default)]
+    pub status_line_command: Option<StatusLineCommandConfig>,
 
     /// Color status line items with colors derived from the active syntax theme.
     /// Defaults to `true`.

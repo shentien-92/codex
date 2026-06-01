@@ -2,6 +2,8 @@
 
 use super::*;
 
+const MCP_OUTPUT_MAX_DISPLAY_LINES: usize = 3;
+
 #[derive(Debug)]
 struct CompletedMcpToolCallWithImageOutput {
     _image: DynamicImage,
@@ -86,22 +88,20 @@ impl McpToolCallCell {
         self.result = Some(Err("interrupted".to_string()));
     }
 
-    fn render_content_block(block: &serde_json::Value, width: usize) -> String {
+    fn render_content_block(
+        block: &serde_json::Value,
+        width: usize,
+        max_lines: Option<usize>,
+    ) -> String {
         let content = match serde_json::from_value::<rmcp::model::Content>(block.clone()) {
             Ok(content) => content,
             Err(_) => {
-                return format_and_truncate_tool_result(
-                    &block.to_string(),
-                    TOOL_CALL_MAX_LINES,
-                    width,
-                );
+                return render_mcp_text(block.to_string().as_str(), width, max_lines);
             }
         };
 
         match content.raw {
-            rmcp::model::RawContent::Text(text) => {
-                format_and_truncate_tool_result(&text.text, TOOL_CALL_MAX_LINES, width)
-            }
+            rmcp::model::RawContent::Text(text) => render_mcp_text(&text.text, width, max_lines),
             rmcp::model::RawContent::Image(_) => "<image content>".to_string(),
             rmcp::model::RawContent::Audio(_) => "<audio content>".to_string(),
             rmcp::model::RawContent::Resource(resource) => {
@@ -114,10 +114,12 @@ impl McpToolCallCell {
             rmcp::model::RawContent::ResourceLink(link) => format!("link: {}", link.uri),
         }
     }
-}
 
-impl HistoryCell for McpToolCallCell {
-    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+    fn display_lines_inner(
+        &self,
+        width: u16,
+        detail_line_limit: Option<usize>,
+    ) -> Vec<Line<'static>> {
         let mut lines: Vec<Line<'static>> = Vec::new();
         let status = self.success();
         let bullet = match status {
@@ -168,7 +170,11 @@ impl HistoryCell for McpToolCallCell {
                 Ok(codex_protocol::mcp::CallToolResult { content, .. }) => {
                     if !content.is_empty() {
                         for block in content {
-                            let text = Self::render_content_block(block, detail_wrap_width);
+                            let text = Self::render_content_block(
+                                block,
+                                detail_wrap_width,
+                                detail_line_limit,
+                            );
                             for segment in text.split('\n') {
                                 let line = Line::from(segment.to_string().dim());
                                 let wrapped = adaptive_wrap_line(
@@ -183,10 +189,10 @@ impl HistoryCell for McpToolCallCell {
                     }
                 }
                 Err(err) => {
-                    let err_text = format_and_truncate_tool_result(
+                    let err_text = render_mcp_text(
                         &format!("Error: {err}"),
-                        TOOL_CALL_MAX_LINES,
                         width as usize,
+                        detail_line_limit,
                     );
                     let err_line = Line::from(err_text.dim());
                     let wrapped = adaptive_wrap_line(
@@ -200,6 +206,15 @@ impl HistoryCell for McpToolCallCell {
             }
         }
 
+        if let Some(max_lines) = detail_line_limit {
+            limit_lines_with_expansion_hint_and_indent(
+                &mut detail_lines,
+                max_lines,
+                detail_wrap_width,
+                "    ",
+            );
+        }
+
         if !detail_lines.is_empty() {
             let initial_prefix: Span<'static> = if inline_invocation {
                 "  └ ".dim()
@@ -210,6 +225,16 @@ impl HistoryCell for McpToolCallCell {
         }
 
         lines
+    }
+}
+
+impl HistoryCell for McpToolCallCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        self.display_lines_inner(width, Some(MCP_OUTPUT_MAX_DISPLAY_LINES))
+    }
+
+    fn transcript_lines(&self, width: u16) -> Vec<Line<'static>> {
+        self.display_lines_inner(width, None)
     }
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
@@ -227,7 +252,11 @@ impl HistoryCell for McpToolCallCell {
             match result {
                 Ok(codex_protocol::mcp::CallToolResult { content, .. }) => {
                     for block in content {
-                        let text = Self::render_content_block(block, RAW_TOOL_OUTPUT_WIDTH);
+                        let text = Self::render_content_block(
+                            block,
+                            RAW_TOOL_OUTPUT_WIDTH,
+                            /*max_lines*/ None,
+                        );
                         lines.extend(raw_lines_from_source(&text));
                     }
                 }
@@ -243,6 +272,20 @@ impl HistoryCell for McpToolCallCell {
             return None;
         }
         Some((self.start_time.elapsed().as_millis() / 50) as u64)
+    }
+}
+
+fn render_mcp_text(text: &str, width: usize, max_lines: Option<usize>) -> String {
+    let Some(max_lines) = max_lines else {
+        return text.to_string();
+    };
+    let max_chars = width.saturating_mul(max_lines.saturating_add(1)).max(1);
+    let mut chars = text.chars();
+    let truncated = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}\n...")
+    } else {
+        truncated
     }
 }
 

@@ -4,12 +4,22 @@
 //! behavior easier to review without paging through the rest of `chatwidget.rs`.
 
 use super::*;
+use crate::bottom_pane::StatusLineContent;
 use crate::bottom_pane::status_line_from_segments;
 use crate::branch_summary;
 use crate::chatwidget::limit_label_for_window;
 use crate::chatwidget::rate_limits::get_limits_duration;
 use crate::legacy_core::config::Config;
 use crate::status::format_tokens_compact;
+use crate::status_line_command::PayloadContext;
+use crate::status_line_command::PayloadGit;
+use crate::status_line_command::PayloadModel;
+use crate::status_line_command::PayloadSession;
+use crate::status_line_command::PayloadStatus;
+use crate::status_line_command::PayloadTerminal;
+use crate::status_line_command::PayloadUsage;
+use crate::status_line_command::PayloadWorkspace;
+use crate::status_line_command::StatusLineCommandPayload;
 use codex_app_server_protocol::AskForApproval;
 use codex_protocol::config_types::ApprovalsReviewer;
 use codex_protocol::config_types::ServiceTier;
@@ -134,7 +144,9 @@ impl ChatWidget {
     }
 
     fn sync_status_surface_shared_state(&mut self, selections: &StatusSurfaceSelections) {
-        if !selections.uses_git_branch() {
+        let status_line_command_reads_git = self.config.tui_status_line_command.is_some()
+            && self.config.active_project.is_trusted();
+        if !selections.uses_git_branch() && !status_line_command_reads_git {
             self.status_line_branch = None;
             self.status_line_branch_pending = false;
             self.status_line_branch_lookup_complete = false;
@@ -146,7 +158,7 @@ impl ChatWidget {
             }
         }
 
-        if !selections.uses_git_summary() {
+        if !selections.uses_git_summary() && !status_line_command_reads_git {
             self.status_line_git_summary = None;
             self.status_line_git_summary_pending = false;
             self.status_line_git_summary_lookup_complete = false;
@@ -160,6 +172,26 @@ impl ChatWidget {
     }
 
     fn refresh_status_line_from_selections(&mut self, selections: &StatusSurfaceSelections) {
+        if self.config.tui_status_line_command.is_some() {
+            if self.config.active_project.is_trusted() {
+                self.bottom_pane.set_status_line_enabled(/*enabled*/ true);
+                self.set_status_line(self.status_line_command_content.clone());
+                self.set_status_line_hyperlink(/*url*/ None);
+                self.request_status_line_command_update();
+                return;
+            }
+
+            if !self
+                .status_line_command_untrusted_warned
+                .swap(true, Ordering::Relaxed)
+            {
+                self.on_warning(
+                    "Ignoring tui.status_line_command because this project is not trusted; using built-in status line items instead."
+                        .to_string(),
+                );
+            }
+        }
+
         let enabled = !selections.status_line_items.is_empty();
         self.bottom_pane.set_status_line_enabled(enabled);
         if !enabled {
@@ -175,16 +207,46 @@ impl ChatWidget {
             }
         }
 
-        self.set_status_line(status_line_from_segments(
-            segments,
-            self.config.tui_status_line_use_colors,
-        ));
+        let status_line =
+            status_line_from_segments(segments, self.config.tui_status_line_use_colors)
+                .and_then(StatusLineContent::single);
+        self.set_status_line(status_line);
         let hyperlink_url = selections
             .status_line_items
             .contains(&StatusLineItem::PullRequestNumber)
             .then(|| self.status_line_pull_request_url())
             .flatten();
         self.set_status_line_hyperlink(hyperlink_url);
+    }
+
+    fn request_status_line_command_update(&mut self) {
+        let Some(runner) = self.status_line_command_runner.clone() else {
+            return;
+        };
+        let cwd = self.status_line_cwd().to_path_buf();
+        self.sync_status_line_branch_state(&cwd);
+        if !self.status_line_branch_lookup_complete {
+            self.request_status_line_branch(cwd.clone());
+        }
+        self.sync_status_line_git_summary_state(&cwd);
+        if !self.status_line_git_summary_lookup_complete {
+            self.request_status_line_git_summary(cwd.clone());
+        }
+
+        match serde_json::to_string(&self.status_line_command_payload()) {
+            Ok(payload_json) => runner.request_update(cwd, payload_json),
+            Err(err) => tracing::error!(error = %err, "failed to serialize status line payload"),
+        }
+    }
+
+    pub(crate) fn apply_status_line_command_update(&mut self, content: StatusLineContent) {
+        self.status_line_command_content = Some(content.clone());
+        if self.config.tui_status_line_command.is_some() && self.config.active_project.is_trusted()
+        {
+            self.bottom_pane.set_status_line_enabled(/*enabled*/ true);
+            self.set_status_line(Some(content));
+            self.set_status_line_hyperlink(/*url*/ None);
+        }
     }
 
     /// Clears the terminal title Codex most recently wrote, if any.
@@ -419,6 +481,75 @@ impl ChatWidget {
         self.current_cwd
             .as_deref()
             .unwrap_or(self.config.cwd.as_path())
+    }
+
+    fn status_line_command_payload(&mut self) -> StatusLineCommandPayload {
+        let cwd = self.status_line_cwd().to_path_buf();
+        let project_root = self.status_line_project_root_for_cwd(&cwd);
+        let usage = self.status_line_total_usage();
+        let terminal_size = crossterm::terminal::size().ok();
+        let reasoning_label =
+            Self::status_line_reasoning_effort_label(self.effective_reasoning_effort());
+        let (additions, deletions) = self
+            .status_line_git_summary
+            .as_ref()
+            .and_then(|summary| summary.branch_change_stats.as_ref())
+            .map(|stats| (Some(stats.additions), Some(stats.deletions)))
+            .unwrap_or((None, None));
+
+        StatusLineCommandPayload {
+            model: PayloadModel {
+                id: self.current_model().to_string(),
+                display_name: self.model_display_name().to_string(),
+                reasoning_effort: Some(reasoning_label.to_string()),
+                service_tier: self.current_service_tier().map(ToString::to_string),
+            },
+            workspace: PayloadWorkspace {
+                cwd: cwd.to_string_lossy().to_string(),
+                current_dir: format_directory_display(&cwd, /*max_width*/ None),
+                project_root: project_root.map(|root| root.to_string_lossy().to_string()),
+            },
+            session: PayloadSession {
+                id: self.thread_id.map(|thread_id| thread_id.to_string()),
+                thread_title: self.thread_name.clone(),
+                codex_version: CODEX_CLI_VERSION.to_string(),
+            },
+            status: PayloadStatus {
+                run_state: self.run_state_status_text(),
+                permissions: permissions_display(&self.config),
+                approval_mode: approval_mode_display(&self.config),
+            },
+            context: PayloadContext {
+                window_tokens: self.status_line_context_window_size(),
+                used_tokens: usage.blended_total(),
+                used_percent: self.status_line_context_used_percent(),
+                remaining_percent: self.status_line_context_remaining_percent(),
+            },
+            usage: PayloadUsage {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                total_tokens: usage.total_tokens,
+            },
+            git: PayloadGit {
+                branch: self.status_line_branch.clone(),
+                pull_request_number: self
+                    .status_line_git_summary
+                    .as_ref()
+                    .and_then(|summary| summary.pull_request.as_ref())
+                    .map(|pull_request| pull_request.number),
+                pull_request_url: self
+                    .status_line_git_summary
+                    .as_ref()
+                    .and_then(|summary| summary.pull_request.as_ref())
+                    .map(|pull_request| pull_request.url.clone()),
+                additions,
+                deletions,
+            },
+            terminal: PayloadTerminal {
+                columns: terminal_size.map(|(columns, _)| columns),
+                rows: terminal_size.map(|(_, rows)| rows),
+            },
+        }
     }
 
     /// Resolves the project root associated with `cwd`.

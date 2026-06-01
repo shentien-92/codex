@@ -90,6 +90,18 @@ impl ChatWidget {
             frame_requester.clone(),
             app_event_tx.clone(),
         );
+        let status_line_command_enabled =
+            config.tui_status_line_command.is_some() && config.active_project.is_trusted();
+        let status_line_command_runner = if status_line_command_enabled {
+            config
+                .tui_status_line_command
+                .as_ref()
+                .map(|status_line_command| {
+                    StatusLineCommandRunner::new(status_line_command, app_event_tx.clone())
+                })
+        } else {
+            None
+        };
         let mut widget = Self {
             app_event_tx: app_event_tx.clone(),
             frame_requester: frame_requester.clone(),
@@ -197,6 +209,9 @@ impl ChatWidget {
             current_rollout_path: None,
             current_cwd,
             workspace_command_runner,
+            status_line_command_runner,
+            status_line_command_content: None,
+            status_line_command_untrusted_warned: Arc::new(AtomicBool::new(false)),
             instruction_source_paths: Vec::new(),
             session_network_proxy: None,
             status_line_invalid_items_warned,
@@ -235,9 +250,9 @@ impl ChatWidget {
         widget
             .bottom_pane
             .set_audio_device_selection_enabled(widget.realtime_audio_device_selection_enabled());
-        widget
-            .bottom_pane
-            .set_status_line_enabled(!widget.configured_status_line_items().is_empty());
+        widget.bottom_pane.set_status_line_enabled(
+            status_line_command_enabled || !widget.configured_status_line_items().is_empty(),
+        );
         widget
             .bottom_pane
             .set_collaboration_modes_enabled(/*enabled*/ true);

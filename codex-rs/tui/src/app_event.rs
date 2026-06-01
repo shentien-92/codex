@@ -35,6 +35,7 @@ use codex_utils_approval_presets::ApprovalPreset;
 use crate::app_command::AppCommand;
 use crate::app_server_session::AppServerStartedThread;
 use crate::bottom_pane::ApprovalRequest;
+use crate::bottom_pane::StatusLineContent;
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::TerminalTitleItem;
 use crate::chatwidget::UserMessage;
@@ -943,6 +944,16 @@ pub(crate) enum AppEvent {
         cwd: PathBuf,
         summary: crate::chatwidget::StatusLineGitSummary,
     },
+    /// Async update from a configured command-backed status line.
+    StatusLineCommandUpdated {
+        content: StatusLineContent,
+    },
+    /// One-shot user-visible warning from the command-backed status line runner.
+    StatusLineCommandWarning {
+        message: String,
+    },
+    /// Timer-driven request to rebuild payload and rerun the configured status line command.
+    StatusLineCommandRefreshRequested,
     /// Apply a user-confirmed status-line item ordering/selection.
     StatusLineSetup {
         items: Vec<StatusLineItem>,

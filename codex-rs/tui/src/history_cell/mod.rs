@@ -37,7 +37,6 @@ use crate::style::user_message_style;
 use crate::test_support::PathBufExt;
 #[cfg(test)]
 use crate::test_support::test_path_buf;
-use crate::text_formatting::format_and_truncate_tool_result;
 use crate::text_formatting::truncate_text;
 use crate::tooltips;
 use crate::ui_consts::LIVE_PREFIX_COLS;
@@ -103,6 +102,7 @@ use url::Url;
 
 const RAW_DIFF_SUMMARY_WIDTH: usize = 10_000;
 const RAW_TOOL_OUTPUT_WIDTH: usize = 10_000;
+const TRANSCRIPT_EXPANSION_HINT: &str = " (ctrl + t to view transcript)";
 
 mod approvals;
 mod base;
@@ -171,6 +171,56 @@ pub(crate) fn plain_lines(lines: impl IntoIterator<Item = Line<'static>>) -> Vec
             Line::from(text)
         })
         .collect()
+}
+
+pub(crate) fn limit_lines_with_expansion_hint_and_indent(
+    lines: &mut Vec<Line<'static>>,
+    max_lines: usize,
+    width: usize,
+    subsequent_indent: &'static str,
+) {
+    if max_lines == 0 {
+        lines.clear();
+        return;
+    }
+
+    let mut visible_lines = Vec::new();
+    let wrap_width = width.max(1);
+    let wrap_opts = RtOptions::new(wrap_width)
+        .initial_indent("".into())
+        .subsequent_indent(subsequent_indent.into());
+    for line in lines.iter() {
+        let wrapped = adaptive_wrap_line(line, wrap_opts.clone());
+        visible_lines.extend(wrapped.iter().map(line_to_static));
+    }
+
+    *lines = visible_lines;
+    if lines.len() <= max_lines {
+        return;
+    }
+
+    let omitted = lines.len() - max_lines;
+    lines.truncate(max_lines);
+    let Some(last_line) = lines.last_mut() else {
+        return;
+    };
+
+    let hint = format!(" ... +{omitted} lines{TRANSCRIPT_EXPANSION_HINT}");
+    let hint_width = UnicodeWidthStr::width(hint.as_str());
+    let available = width.saturating_sub(hint_width);
+    let base_style = last_line
+        .spans
+        .first()
+        .map(|span| span.style)
+        .unwrap_or_default();
+    let text = last_line
+        .spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect::<String>();
+    let (visible, _, _) = take_prefix_by_width(text.as_str(), available);
+
+    *last_line = vec![visible.set_style(base_style), hint.dim()].into();
 }
 
 /// A single renderable unit of conversation history.

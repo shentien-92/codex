@@ -2629,6 +2629,37 @@
       },
       "type": "object"
     },
+    "StatusLineCommandConfig": {
+      "additionalProperties": false,
+      "description": "External command that replaces the built-in TUI status line.",
+      "properties": {
+        "command": {
+          "description": "Command argv to execute. Codex does not add an implicit shell.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_lines": {
+          "default": null,
+          "description": "Maximum number of stdout lines to render.",
+          "format": "uint",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "refresh_interval_ms": {
+          "default": null,
+          "description": "Optional event-independent refresh cadence in milliseconds.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
     "ThreadStoreToml": {
       "oneOf": [
         {
@@ -2963,6 +2994,15 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "status_line_command": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/StatusLineCommandConfig"
+            }
+          ],
+          "default": null,
+          "description": "External command that replaces the full TUI status line when configured in a trusted workspace."
         },
         "status_line_use_colors": {
           "default": true,

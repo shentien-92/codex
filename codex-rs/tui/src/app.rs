@@ -803,6 +803,7 @@ impl App {
             .tui_status_line
             .as_ref()
             .is_some_and(|cmd| !cmd.is_empty())
+            || config.tui_status_line_command.is_some()
         {
             session_telemetry.counter("codex.status_line", /*inc*/ 1, &[]);
         }

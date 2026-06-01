@@ -20,6 +20,10 @@ use std::path::PathBuf;
 use crate::version::CODEX_CLI_VERSION;
 
 pub fn get_upgrade_version(config: &Config) -> Option<String> {
+    if update_prompts_disabled_for_private_build() {
+        return None;
+    }
+
     if !config.check_for_update_on_startup || is_source_build_version(CODEX_CLI_VERSION) {
         return None;
     }
@@ -145,6 +149,10 @@ async fn fetch_latest_github_release_version() -> anyhow::Result<String> {
 /// Returns the latest version to show in a popup, if it should be shown.
 /// This respects the user's dismissal choice for the current latest version.
 pub fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
+    if update_prompts_disabled_for_private_build() {
+        return None;
+    }
+
     if !config.check_for_update_on_startup || is_source_build_version(CODEX_CLI_VERSION) {
         return None;
     }
@@ -158,6 +166,10 @@ pub fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
         return None;
     }
     Some(latest)
+}
+
+fn update_prompts_disabled_for_private_build() -> bool {
+    true
 }
 
 /// Persist a dismissal for the current latest version so we don't show

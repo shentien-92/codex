@@ -53,6 +53,7 @@ use codex_config::types::OtelExporterKind;
 use codex_config::types::SandboxWorkspaceWrite;
 use codex_config::types::SessionPickerViewMode;
 use codex_config::types::SkillsConfig;
+use codex_config::types::StatusLineCommandConfig;
 use codex_config::types::ToolSuggestDisabledTool;
 use codex_config::types::ToolSuggestDiscoverableType;
 use codex_config::types::Tui;
@@ -565,6 +566,7 @@ fn config_toml_deserializes_model_availability_nux() {
             raw_output_mode: false,
             alternate_screen: AltScreenMode::default(),
             status_line: None,
+            status_line_command: None,
             status_line_use_colors: true,
             terminal_title: None,
             theme: None,
@@ -3223,6 +3225,7 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             raw_output_mode: false,
             alternate_screen: AltScreenMode::Auto,
             status_line: None,
+            status_line_command: None,
             status_line_use_colors: true,
             terminal_title: None,
             theme: None,
@@ -3233,6 +3236,33 @@ fn tui_config_missing_notifications_field_defaults_to_enabled() {
             model_availability_nux: ModelAvailabilityNuxConfig::default(),
             terminal_resize_reflow_max_rows: None,
         }
+    );
+}
+
+#[test]
+fn config_toml_deserializes_status_line_command() {
+    let toml = r#"
+[tui.status_line_command]
+command = ["/bin/sh", "-lc", "printf status"]
+refresh_interval_ms = 1000
+max_lines = 4
+"#;
+    let cfg: ConfigToml =
+        toml::from_str(toml).expect("TOML deserialization should succeed for status line command");
+
+    assert_eq!(
+        cfg.tui
+            .expect("tui config should deserialize")
+            .status_line_command,
+        Some(StatusLineCommandConfig {
+            command: vec![
+                "/bin/sh".to_string(),
+                "-lc".to_string(),
+                "printf status".to_string()
+            ],
+            refresh_interval_ms: Some(1000),
+            max_lines: Some(4),
+        })
     );
 }
 

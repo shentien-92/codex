@@ -294,8 +294,40 @@ impl HookCell {
 }
 
 impl HistoryCell for HookCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        self.display_lines_inner(width, CompletedHookOutputMode::SummaryOnly)
+    }
+
+    fn transcript_lines(&self, width: u16) -> Vec<Line<'static>> {
+        self.display_lines_inner(width, CompletedHookOutputMode::Full)
+    }
+
+    fn raw_lines(&self) -> Vec<Line<'static>> {
+        plain_lines(self.transcript_lines(u16::MAX))
+    }
+
+    /// Produces a coarse cache key for transcript overlays while hook animations are active.
+    fn transcript_animation_tick(&self) -> Option<u64> {
+        if !self.animations_enabled {
+            return None;
+        }
+        let elapsed = self
+            .runs
+            .iter()
+            .filter(|run| run.state.is_running_visible())
+            .find_map(|run| run.state.start_time())?
+            .elapsed();
+        Some(elapsed.as_millis() as u64 / 600)
+    }
+}
+
+impl HookCell {
     /// Builds viewport lines while coalescing adjacent visible-running hooks.
-    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
+    fn display_lines_inner(
+        &self,
+        width: u16,
+        completed_output_mode: CompletedHookOutputMode,
+    ) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         let mut running_group: Option<RunningHookGroup> = None;
         for run in &self.runs {
@@ -310,7 +342,12 @@ impl HistoryCell for HookCell {
                     push_running_hook_group(&mut lines, &group, self.animations_enabled);
                 }
                 push_hook_line_separator(&mut lines);
-                run.push_display_lines(&mut lines, self.animations_enabled);
+                run.push_display_lines(
+                    &mut lines,
+                    self.animations_enabled,
+                    completed_output_mode,
+                    width as usize,
+                );
                 continue;
             };
 
@@ -334,29 +371,6 @@ impl HistoryCell for HookCell {
             push_running_hook_group(&mut lines, &group, self.animations_enabled);
         }
         lines
-    }
-
-    /// Hook transcript output matches viewport output.
-    fn transcript_lines(&self, width: u16) -> Vec<Line<'static>> {
-        self.display_lines(width)
-    }
-
-    fn raw_lines(&self) -> Vec<Line<'static>> {
-        plain_lines(self.display_lines(u16::MAX))
-    }
-
-    /// Produces a coarse cache key for transcript overlays while hook animations are active.
-    fn transcript_animation_tick(&self) -> Option<u64> {
-        if !self.animations_enabled {
-            return None;
-        }
-        let elapsed = self
-            .runs
-            .iter()
-            .filter(|run| run.state.is_running_visible())
-            .find_map(|run| run.state.start_time())?
-            .elapsed();
-        Some(elapsed.as_millis() as u64 / 600)
     }
 }
 
@@ -417,7 +431,13 @@ impl HookRunCell {
     }
 
     /// Appends the lines for a single, ungrouped hook run.
-    fn push_display_lines(&self, lines: &mut Vec<Line<'static>>, animations_enabled: bool) {
+    fn push_display_lines(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        animations_enabled: bool,
+        completed_output_mode: CompletedHookOutputMode,
+        _width: usize,
+    ) {
         let label = hook_event_label(self.event_name);
         match &self.state {
             HookRunState::VisibleRunning { start_time, .. }
@@ -443,13 +463,31 @@ impl HookRunCell {
                     .into(),
                 );
                 for entry in entries {
-                    // Output entries are already short hook-authored strings; keep their prefixes
-                    // explicit so warnings/stops/errors remain easy to scan in history.
-                    lines
-                        .push(format!("  {}{}", hook_output_prefix(entry.kind), entry.text).into());
+                    if completed_output_mode.should_render_entry(entry.kind) {
+                        // Output entries are already hook-authored strings; keep their prefixes
+                        // explicit so warnings/stops/errors remain searchable.
+                        lines.push(
+                            format!("  {}{}", hook_output_prefix(entry.kind), entry.text).into(),
+                        );
+                    }
                 }
             }
             HookRunState::PendingReveal { .. } => {}
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CompletedHookOutputMode {
+    SummaryOnly,
+    Full,
+}
+
+impl CompletedHookOutputMode {
+    fn should_render_entry(self, kind: HookOutputEntryKind) -> bool {
+        match self {
+            Self::SummaryOnly => hook_output_entry_is_actionable(kind),
+            Self::Full => true,
         }
     }
 }
@@ -711,6 +749,16 @@ fn hook_output_prefix(kind: HookOutputEntryKind) -> &'static str {
     }
 }
 
+fn hook_output_entry_is_actionable(kind: HookOutputEntryKind) -> bool {
+    match kind {
+        HookOutputEntryKind::Warning
+        | HookOutputEntryKind::Stop
+        | HookOutputEntryKind::Feedback
+        | HookOutputEntryKind::Error => true,
+        HookOutputEntryKind::Context => false,
+    }
+}
+
 fn hook_event_label(event_name: HookEventName) -> &'static str {
     match event_name {
         HookEventName::PreToolUse => "PreToolUse",
@@ -801,6 +849,125 @@ mod tests {
         assert_eq!(
             rendered,
             vec!["Running PostToolUse hook: checking output policy".to_string()]
+        );
+    }
+
+    #[test]
+    fn completed_hook_context_display_is_summary_only() {
+        let cell = HookCell::new_completed(
+            HookRunSummary {
+                id: "hook-1".to_string(),
+                event_name: HookEventName::UserPromptSubmit,
+                handler_type: codex_app_server_protocol::HookHandlerType::Command,
+                execution_mode: codex_app_server_protocol::HookExecutionMode::Sync,
+                scope: codex_app_server_protocol::HookScope::Turn,
+                source_path: test_path_buf("/tmp/hooks.json").abs(),
+                source: codex_app_server_protocol::HookSource::User,
+                display_order: 0,
+                status: HookRunStatus::Completed,
+                status_message: None,
+                started_at: 1,
+                completed_at: Some(2),
+                duration_ms: Some(1),
+                entries: vec![HookOutputEntry {
+                    kind: HookOutputEntryKind::Context,
+                    text: "<sub-agent-notice>SUB-AGENT NOTICE - READ FIRST IF SPAWNED VIA spawn_agent If your parent session spawned you via spawn_agent with an explicit task message above this hook output, that message is your only job.</sub-agent-notice><trellis-bootstrap>You are running in a Trellis-managed Codex session and there is no active task yet.</trellis-bootstrap>".to_string(),
+                }],
+            },
+            /*animations_enabled*/ false,
+        );
+
+        let rendered: Vec<String> = cell
+            .display_lines(/*width*/ 80)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+
+        assert_eq!(rendered, vec!["• UserPromptSubmit hook (completed)"]);
+
+        let transcript: Vec<String> = cell
+            .transcript_lines(/*width*/ 80)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+        assert_eq!(transcript.len(), 2);
+        assert_eq!(transcript[0], "• UserPromptSubmit hook (completed)");
+        assert!(transcript[1].starts_with("  hook context: <sub-agent-notice>"));
+    }
+
+    #[test]
+    fn completed_hook_summary_keeps_actionable_output_visible() {
+        let cell = HookCell::new_completed(
+            HookRunSummary {
+                id: "hook-1".to_string(),
+                event_name: HookEventName::PreToolUse,
+                handler_type: codex_app_server_protocol::HookHandlerType::Command,
+                execution_mode: codex_app_server_protocol::HookExecutionMode::Sync,
+                scope: codex_app_server_protocol::HookScope::Turn,
+                source_path: test_path_buf("/tmp/hooks.json").abs(),
+                source: codex_app_server_protocol::HookSource::User,
+                display_order: 0,
+                status: HookRunStatus::Blocked,
+                status_message: None,
+                started_at: 1,
+                completed_at: Some(2),
+                duration_ms: Some(1),
+                entries: vec![
+                    HookOutputEntry {
+                        kind: HookOutputEntryKind::Context,
+                        text: "large bootstrap context".to_string(),
+                    },
+                    HookOutputEntry {
+                        kind: HookOutputEntryKind::Warning,
+                        text: "policy warning".to_string(),
+                    },
+                    HookOutputEntry {
+                        kind: HookOutputEntryKind::Stop,
+                        text: "prompt blocked".to_string(),
+                    },
+                    HookOutputEntry {
+                        kind: HookOutputEntryKind::Feedback,
+                        text: "explain the blocked prompt".to_string(),
+                    },
+                    HookOutputEntry {
+                        kind: HookOutputEntryKind::Error,
+                        text: "hook failed to inspect tool args".to_string(),
+                    },
+                ],
+            },
+            /*animations_enabled*/ false,
+        );
+
+        let rendered: Vec<String> = cell
+            .display_lines(/*width*/ 80)
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "• PreToolUse hook (blocked)",
+                "  warning: policy warning",
+                "  stop: prompt blocked",
+                "  feedback: explain the blocked prompt",
+                "  error: hook failed to inspect tool args",
+            ]
         );
     }
 

@@ -44,6 +44,7 @@ use codex_protocol::user_input::TextElement;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
+pub(crate) use footer::StatusLineContent;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::Line;
@@ -1671,7 +1672,7 @@ impl BottomPane {
             .cursor_style(area)
     }
 
-    pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) {
+    pub(crate) fn set_status_line(&mut self, status_line: Option<StatusLineContent>) {
         if self.composer.set_status_line(status_line) {
             self.request_redraw();
         }

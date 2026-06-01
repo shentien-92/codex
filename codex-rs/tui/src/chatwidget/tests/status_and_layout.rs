@@ -168,6 +168,103 @@ async fn status_line_git_summary_items_render_values() {
 }
 
 #[tokio::test]
+async fn trusted_status_line_command_does_not_fallback_to_builtin_items() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line = Some(vec!["model".to_string()]);
+    chat.config.tui_status_line_command = Some(test_status_line_command_config());
+    chat.config.active_project = codex_config::config_toml::ProjectConfig {
+        trust_level: Some(codex_protocol::config_types::TrustLevel::Trusted),
+    };
+
+    chat.refresh_status_line();
+    assert_eq!(
+        status_line_text(&chat),
+        None,
+        "trusted command source with no successful output should render empty, not built-in items"
+    );
+
+    let command_content =
+        crate::bottom_pane::StatusLineContent::single(ratatui::text::Line::from("custom status"))
+            .expect("status line content");
+    chat.apply_status_line_command_update(command_content);
+    chat.refresh_status_line();
+
+    assert_eq!(
+        status_line_text(&chat),
+        Some("custom status".to_string()),
+        "refresh after a failure/no-op should keep the last successful command output"
+    );
+}
+
+#[tokio::test]
+async fn untrusted_status_line_command_falls_back_and_warns_once() {
+    let (mut chat, mut rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.config.tui_status_line = Some(vec!["model".to_string()]);
+    chat.config.tui_status_line_command = Some(test_status_line_command_config());
+    chat.config.active_project = codex_config::config_toml::ProjectConfig {
+        trust_level: Some(codex_protocol::config_types::TrustLevel::Untrusted),
+    };
+    let expected_builtin = chat
+        .status_line_value_for_item(crate::bottom_pane::StatusLineItem::ModelName)
+        .expect("model status line item should render");
+
+    chat.refresh_status_line();
+
+    assert_eq!(status_line_text(&chat), Some(expected_builtin));
+    let warnings = drain_insert_history(&mut rx);
+    assert_eq!(warnings.len(), 1);
+    assert!(
+        lines_to_single_string(&warnings[0]).contains("Ignoring tui.status_line_command"),
+        "expected untrusted status line command warning"
+    );
+
+    chat.refresh_status_line();
+
+    assert!(
+        drain_insert_history(&mut rx).is_empty(),
+        "untrusted status line command warning should only be emitted once"
+    );
+}
+
+#[tokio::test]
+async fn trusted_status_line_command_keeps_git_context_without_builtin_git_items() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
+    let cwd = chat.config.cwd.as_path().to_path_buf();
+    chat.config.tui_status_line = Some(vec!["model".to_string()]);
+    chat.config.tui_status_line_command = Some(test_status_line_command_config());
+    chat.config.active_project = codex_config::config_toml::ProjectConfig {
+        trust_level: Some(codex_protocol::config_types::TrustLevel::Trusted),
+    };
+
+    chat.refresh_status_line();
+    chat.set_status_line_branch(cwd.clone(), Some("feature/status-line".to_string()));
+    chat.set_status_line_git_summary(
+        cwd,
+        StatusLineGitSummary {
+            pull_request: Some(crate::branch_summary::StatusLinePullRequest {
+                number: 123,
+                url: "https://github.com/openai/codex/pull/123".to_string(),
+            }),
+            branch_change_stats: Some(crate::branch_summary::GitBranchDiffStats {
+                additions: 10,
+                deletions: 2,
+            }),
+        },
+    );
+
+    chat.refresh_status_line();
+
+    assert_eq!(
+        chat.status_line_branch.as_deref(),
+        Some("feature/status-line")
+    );
+    assert!(
+        chat.status_line_git_summary.is_some(),
+        "command-backed status line payload should keep git summary state even without built-in git items"
+    );
+}
+
+#[tokio::test]
 async fn raw_output_status_line_value_only_shows_when_enabled() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(/*model_override*/ None).await;
 
@@ -182,6 +279,14 @@ async fn raw_output_status_line_value_only_shows_when_enabled() {
         chat.status_line_value_for_item(crate::bottom_pane::StatusLineItem::RawOutput),
         Some("raw output".to_string())
     );
+}
+
+fn test_status_line_command_config() -> codex_config::types::StatusLineCommandConfig {
+    codex_config::types::StatusLineCommandConfig {
+        command: vec!["/bin/false".to_string()],
+        refresh_interval_ms: None,
+        max_lines: None,
+    }
 }
 
 #[tokio::test]
@@ -3011,14 +3116,17 @@ async fn blocked_and_failed_hooks_render_feedback_and_errors() {
         .collect::<String>();
     assert_chatwidget_snapshot!("hook_blocked_failed_feedback_history_snapshot", rendered);
     assert!(
-        rendered.contains(
-            "PreToolUse hook (blocked)\n  feedback: run tests before touching the fixture"
-        ),
-        "expected blocked hook feedback: {rendered:?}"
+        rendered.contains("PreToolUse hook (blocked)\n"),
+        "expected blocked hook summary: {rendered:?}"
     );
     assert!(
-        rendered.contains("PostToolUse hook (failed)\n  error: hook exited with code 7"),
-        "expected failed hook error: {rendered:?}"
+        rendered.contains("PostToolUse hook (failed)\n"),
+        "expected failed hook summary: {rendered:?}"
+    );
+    assert!(
+        rendered.contains("feedback: run tests before touching the fixture")
+            && rendered.contains("error: hook exited with code 7"),
+        "expected actionable hook output in the main history: {rendered:?}"
     );
 }
 
@@ -3166,8 +3274,12 @@ async fn completed_same_id_hook_output_survives_restart() {
         )
     );
     assert!(
-        history.contains("Stop hook (stopped)\n  stop: continue with more context"),
-        "first hook output should not be overwritten: {history:?}"
+        history.contains("Stop hook (stopped)\n"),
+        "first hook summary should not be overwritten: {history:?}"
+    );
+    assert!(
+        !history.contains("continue with more context"),
+        "completed hook output should stay out of the main history: {history:?}"
     );
 }
 

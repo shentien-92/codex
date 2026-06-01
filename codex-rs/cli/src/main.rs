@@ -719,7 +719,7 @@ fn run_update_command() -> anyhow::Result<()> {
     {
         let Some(action) = codex_tui::get_update_action() else {
             anyhow::bail!(
-                "Could not detect the Codex installation method. Please update manually: https://developers.openai.com/codex/cli/"
+                "`codex update` is disabled for this private build. Update by merging the desired upstream release or branch locally, resolving conflicts, and rebuilding."
             );
         };
         run_update_action(action)

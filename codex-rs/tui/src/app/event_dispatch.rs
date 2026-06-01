@@ -1897,6 +1897,16 @@ impl App {
                 self.chat_widget.set_status_line_git_summary(cwd, summary);
                 self.refresh_status_line();
             }
+            AppEvent::StatusLineCommandUpdated { content } => {
+                self.chat_widget.apply_status_line_command_update(content);
+            }
+            AppEvent::StatusLineCommandWarning { message } => {
+                tracing::warn!(message = %message, "status line command warning");
+                self.chat_widget.add_warning_message(message);
+            }
+            AppEvent::StatusLineCommandRefreshRequested => {
+                self.refresh_status_line();
+            }
             AppEvent::StatusLineSetupCancelled => {
                 self.chat_widget.cancel_status_line_setup();
             }

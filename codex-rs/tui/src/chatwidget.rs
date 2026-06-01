@@ -282,6 +282,7 @@ use crate::bottom_pane::QueuedInputAction;
 use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
+use crate::bottom_pane::StatusLineContent;
 use crate::bottom_pane::custom_prompt_view::CustomPromptView;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
 use crate::clipboard_paste::paste_image_to_temp_png;
@@ -317,6 +318,7 @@ use crate::status::RateLimitSnapshotDisplay;
 use crate::status::remote_connection::RemoteConnectionStatus;
 use crate::status_indicator_widget::STATUS_DETAILS_DEFAULT_MAX_LINES;
 use crate::status_indicator_widget::StatusDetailsCapitalization;
+use crate::status_line_command::StatusLineCommandRunner;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
 mod command_lifecycle;
@@ -664,6 +666,12 @@ pub(crate) struct ChatWidget {
     current_cwd: Option<PathBuf>,
     // App-server-backed command runner for status-line workspace metadata lookups.
     workspace_command_runner: Option<WorkspaceCommandRunner>,
+    // External command runner that can replace the built-in footer status line.
+    status_line_command_runner: Option<StatusLineCommandRunner>,
+    // Last successful command-backed status line content.
+    status_line_command_content: Option<StatusLineContent>,
+    // Shared latch so we only warn once when command status line config is blocked by trust.
+    status_line_command_untrusted_warned: Arc<AtomicBool>,
     // Instruction source files loaded for the current session, supplied by app-server.
     instruction_source_paths: Vec<AbsolutePathBuf>,
     // Runtime network proxy bind addresses from SessionConfigured.
