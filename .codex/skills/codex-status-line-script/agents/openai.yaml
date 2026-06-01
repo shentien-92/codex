@@ -1,0 +1,7 @@
+interface:
+  display_name: "Codex Status Line Script"
+  short_description: "Generate custom Codex status line scripts"
+  default_prompt: "Use $codex-status-line-script to create and preview a custom Codex TUI status line script."
+
+policy:
+  allow_implicit_invocation: true
