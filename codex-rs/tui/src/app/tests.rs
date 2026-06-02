@@ -4426,6 +4426,20 @@ async fn fresh_session_config_uses_current_service_tier() {
 }
 
 #[tokio::test]
+async fn fresh_session_config_does_not_reload_disk_config() -> Result<()> {
+    let mut app = make_test_app().await;
+    let codex_home = tempdir()?;
+    app.config.codex_home = codex_home.path().to_path_buf().abs();
+    app.config.model = Some("in-memory-model".to_string());
+    std::fs::write(codex_home.path().join("config.toml"), "[broken")?;
+
+    let config = app.fresh_session_config();
+
+    assert_eq!(config.model, Some("in-memory-model".to_string()));
+    Ok(())
+}
+
+#[tokio::test]
 async fn backtrack_selection_with_duplicate_history_targets_unique_turn() {
     let (mut app, _app_event_rx, mut op_rx) = make_test_app_with_channels().await;
 

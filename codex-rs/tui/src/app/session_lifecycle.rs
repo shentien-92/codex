@@ -471,8 +471,6 @@ impl App {
         // Start a fresh in-memory session while preserving resumability via persisted rollout
         // history. If an initial message is provided, `enqueue_primary_thread_session` suppresses it
         // until the new session is configured and any replayed turns have been rendered.
-        self.refresh_in_memory_config_from_disk_best_effort("starting a new thread")
-            .await;
         let model = self.chat_widget.current_model().to_string();
         let config = self.fresh_session_config();
         let summary = session_summary(
