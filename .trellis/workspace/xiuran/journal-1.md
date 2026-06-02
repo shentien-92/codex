@@ -173,3 +173,36 @@ Fixed the TUI status line disappearing after newly attached app-server/subagent 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Link local Codex release binary
+
+**Date**: 2026-06-02
+**Task**: Link local Codex release binary
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Built codex-cli release binary, replaced the local codex symlink with target/release/codex, and removed the old global npm @openai/codex package.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e1bcbc43b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
