@@ -74,3 +74,36 @@ Implemented command-backed multi-line TUI status line with trust-gated async run
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Local Codex statusline preview
+
+**Date**: 2026-06-02
+**Task**: Local Codex statusline preview
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Added a project-tracked Codex statusline script mirroring the local two-line status display with themed colors, Trellis task metadata, agent status, context usage, cwd, and branch.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9be1f2050` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
