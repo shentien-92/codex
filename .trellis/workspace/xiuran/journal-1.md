@@ -107,3 +107,36 @@ Added a project-tracked Codex statusline script mirroring the local two-line sta
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Fix local Codex /new crash
+
+**Date**: 2026-06-02
+**Task**: Fix local Codex /new crash
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Reproduced the local Codex /new crash, removed the fresh-session disk config reload, added regression coverage for in-memory fresh-session config, and verified the focused codex-tui test.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38450df5e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

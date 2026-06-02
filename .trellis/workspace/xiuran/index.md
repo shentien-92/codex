@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
+- **Total Sessions**: 4
 - **Last Active**: 2026-06-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~109 | Active |
+| `journal-1.md` | ~142 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-06-02 | Fix local Codex /new crash | `38450df5e` | `ralph/rust-v0.135.0-custom` |
 | 3 | 2026-06-02 | Local Codex statusline preview | `9be1f2050` | `ralph/rust-v0.135.0-custom` |
 | 2 | 2026-06-01 | Codex status line command | `af0b3d872`, `0f2b17363` | `ralph/rust-v0.135.0-custom` |
 | 1 | 2026-05-29 | WS reconnecting diagnostics | `226dfb187`, `1da1ff5fe`, `528e27905` | `ralph/rust-v0.135.0-custom` |
