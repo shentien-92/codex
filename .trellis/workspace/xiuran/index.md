@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-06-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~208 | Active |
+| `journal-1.md` | ~241 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-06-02 | Compact Codex Trellis statusline | `8a3b56995` | `ralph/rust-v0.135.0-custom` |
 | 6 | 2026-06-02 | Link local Codex release binary | `e1bcbc43b` | `ralph/rust-v0.135.0-custom` |
 | 5 | 2026-06-02 | Fix status bar after spawning subagent | `4b3001492` | `ralph/rust-v0.135.0-custom` |
 | 4 | 2026-06-02 | Fix local Codex /new crash | `38450df5e` | `ralph/rust-v0.135.0-custom` |

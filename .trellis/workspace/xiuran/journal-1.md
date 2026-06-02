@@ -206,3 +206,36 @@ Built codex-cli release binary, replaced the local codex symlink with target/rel
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: Compact Codex Trellis statusline
+
+**Date**: 2026-06-02
+**Task**: Compact Codex Trellis statusline
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Updated the Codex custom statusline Trellis segment to show compact task title/status, assignee, and active task count while dropping the task directory slug. Verified with node syntax checks, statusline preview, and diff checks.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a3b56995` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
