@@ -126,11 +126,23 @@ function statusColor(status) {
   if (key === 'blocked' || key === 'failed') return RED;
   return CYAN;
 }
+function activeTaskCount(trellisDir) {
+  const tasksDir = path.join(trellisDir, 'tasks');
+  try {
+    return fs.readdirSync(tasksDir, { withFileTypes: true }).reduce((count, entry) => {
+      if (!entry.isDirectory() || entry.name === 'archive') return count;
+      return fs.existsSync(path.join(tasksDir, entry.name, 'task.json')) ? count + 1 : count;
+    }, 0);
+  } catch (_) {
+    return 0;
+  }
+}
 
 function trellisSegment(data) {
   const cwd = get(data, ['workspace', 'cwd'], process.cwd());
   const trellisDir = findUp(cwd, '.trellis');
   if (!trellisDir) return '';
+  const taskCount = activeTaskCount(trellisDir);
 
   const sessionsDir = path.join(trellisDir, '.runtime', 'sessions');
   let sessionFiles = [];
@@ -154,17 +166,18 @@ function trellisSegment(data) {
     const task = readJson(path.join(taskDir, 'task.json'));
     if (!task || typeof task !== 'object') continue;
 
-    const current = path.basename(taskDir);
     const status = String(task.status || 'unknown');
     const priority = String(task.priority || '').trim();
-    const assignee = String(task.assignee || task.creator || '').trim();
+    const title = String(task.title || task.name || path.basename(taskDir)).trim();
+    const user = String(task.assignee || task.creator || '').trim();
     const bits = [
-      s(status, statusColor(status)),
       priority ? s(priority, MAGENTA) : '',
-      assignee ? s(assignee, CYAN) : '',
-      s(current, CREAM),
+      s(short(title, 36), CREAM),
+      s(`(${status})`, statusColor(status)),
+      user ? `${s('·', GRAY)} ${s(user, CYAN)}` : '',
+      taskCount ? `${s('·', GRAY)} ${taskCount} task(s)` : '',
     ].filter(Boolean);
-    return bits.join(s(' · ', GRAY));
+    return bits.join(' ');
   }
 
   return '';
