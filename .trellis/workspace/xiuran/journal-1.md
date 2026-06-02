@@ -140,3 +140,36 @@ Reproduced the local Codex /new crash, removed the fresh-session disk config rel
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Fix status bar after spawning subagent
+
+**Date**: 2026-06-02
+**Task**: Fix status bar after spawning subagent
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Fixed the TUI status line disappearing after newly attached app-server/subagent sessions by refreshing status-line content after primary thread session enqueue; added focused regression coverage and verified formatting plus focused codex-tui test. Full codex-tui run still has unrelated existing snapshot drift.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b3001492` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
