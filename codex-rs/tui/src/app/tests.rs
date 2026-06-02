@@ -1133,6 +1133,25 @@ async fn token_usage_update_refreshes_status_line_with_runtime_context_window() 
 }
 
 #[tokio::test]
+async fn enqueue_primary_thread_session_refreshes_status_line() -> Result<()> {
+    let mut app = make_test_app().await;
+    app.chat_widget.setup_status_line(
+        vec![crate::bottom_pane::StatusLineItem::ModelName],
+        /*use_theme_colors*/ true,
+    );
+    app.chat_widget.set_status_line(/*status_line*/ None);
+
+    app.enqueue_primary_thread_session(
+        test_thread_session(ThreadId::new(), test_path_buf("/tmp/project")),
+        Vec::new(),
+    )
+    .await?;
+
+    assert_eq!(app.chat_widget.status_line_text(), Some("gpt-test".into()));
+    Ok(())
+}
+
+#[tokio::test]
 async fn collab_receiver_notification_caches_thread_without_app_server_read() {
     let mut app = make_test_app().await;
     let receiver_thread_id =
