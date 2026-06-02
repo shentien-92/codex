@@ -549,6 +549,7 @@ impl ChatWidget {
                 columns: terminal_size.map(|(columns, _)| columns),
                 rows: terminal_size.map(|(_, rows)| rows),
             },
+            agents: self.status_line_agents.clone(),
         }
     }
 

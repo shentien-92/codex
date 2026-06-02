@@ -260,6 +260,7 @@ pub(crate) struct StatusLineCommandPayload {
     pub(crate) usage: PayloadUsage,
     pub(crate) git: PayloadGit,
     pub(crate) terminal: PayloadTerminal,
+    pub(crate) agents: PayloadAgents,
 }
 
 #[derive(Debug, Serialize)]
@@ -327,6 +328,38 @@ pub(crate) struct PayloadGit {
 pub(crate) struct PayloadTerminal {
     pub(crate) columns: Option<u16>,
     pub(crate) rows: Option<u16>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PayloadAgents {
+    pub(crate) total: usize,
+    pub(crate) current: Option<String>,
+    pub(crate) items: Vec<PayloadAgentItem>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PayloadAgentItem {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) role: Option<String>,
+    pub(crate) status: String,
+}
+
+impl PayloadAgents {
+    pub(crate) fn upsert_item(&mut self, item: PayloadAgentItem) {
+        if let Some(existing) = self
+            .items
+            .iter_mut()
+            .find(|existing| existing.id == item.id)
+        {
+            *existing = item;
+        } else {
+            self.items.push(item);
+        }
+        self.total = self.items.len();
+    }
 }
 
 #[cfg(test)]
@@ -403,6 +436,24 @@ mod tests {
                 columns: Some(120),
                 rows: Some(40),
             },
+            agents: PayloadAgents {
+                total: 2,
+                current: Some("Lagrange [worker]".to_string()),
+                items: vec![
+                    PayloadAgentItem {
+                        id: "agent-1".to_string(),
+                        name: "Lagrange".to_string(),
+                        role: Some("worker".to_string()),
+                        status: "running".to_string(),
+                    },
+                    PayloadAgentItem {
+                        id: "agent-2".to_string(),
+                        name: "Hume".to_string(),
+                        role: None,
+                        status: "completed".to_string(),
+                    },
+                ],
+            },
         };
 
         let value = serde_json::to_value(payload).expect("payload serializes");
@@ -412,6 +463,9 @@ mod tests {
             "https://github.com/openai/codex/pull/123"
         );
         assert_eq!(value["terminal"]["columns"], 120);
+        assert_eq!(value["agents"]["total"], 2);
+        assert_eq!(value["agents"]["current"], "Lagrange [worker]");
+        assert_eq!(value["agents"]["items"][0]["status"], "running");
     }
 
     #[cfg(unix)]

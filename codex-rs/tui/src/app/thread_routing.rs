@@ -182,10 +182,22 @@ impl App {
     /// intentionally hidden until there is more than one known thread so single-thread sessions do
     /// not spend footer space restating that the user is already on the main conversation.
     pub(super) fn sync_active_agent_label(&mut self) {
+        let agents = self
+            .agent_navigation
+            .status_line_agents(self.current_displayed_thread_id(), self.primary_thread_id);
         let label = self
             .agent_navigation
-            .active_agent_label(self.current_displayed_thread_id(), self.primary_thread_id);
+            .active_agent_label(self.current_displayed_thread_id(), self.primary_thread_id)
+            .map(|label| {
+                if agents.total > 0 {
+                    format!("{label} · agents total {}", agents.total)
+                } else {
+                    label
+                }
+            });
         self.chat_widget.set_active_agent_label(label);
+        self.chat_widget.set_status_line_agents(agents);
+        self.refresh_status_line();
         self.sync_side_thread_ui();
     }
 

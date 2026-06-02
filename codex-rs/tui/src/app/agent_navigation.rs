@@ -22,6 +22,8 @@ use crate::multi_agents::AgentPickerThreadEntry;
 use crate::multi_agents::format_agent_picker_item_name;
 use crate::multi_agents::next_agent_shortcut;
 use crate::multi_agents::previous_agent_shortcut;
+use crate::status_line_command::PayloadAgentItem;
+use crate::status_line_command::PayloadAgents;
 use codex_protocol::ThreadId;
 use ratatui::text::Span;
 use std::collections::HashMap;
@@ -231,6 +233,52 @@ impl AgentNavigationState {
         )
     }
 
+    /// Builds the status-line command payload for non-primary agent threads.
+    pub(crate) fn status_line_agents(
+        &self,
+        current_displayed_thread_id: Option<ThreadId>,
+        primary_thread_id: Option<ThreadId>,
+    ) -> PayloadAgents {
+        let items = self
+            .ordered_threads()
+            .into_iter()
+            .filter(|(thread_id, _)| Some(*thread_id) != primary_thread_id)
+            .map(|(thread_id, entry)| PayloadAgentItem {
+                id: thread_id.to_string(),
+                name: format_agent_picker_item_name(
+                    entry.agent_nickname.as_deref(),
+                    /*agent_role*/ None,
+                    /*is_primary*/ false,
+                ),
+                role: entry.agent_role.clone(),
+                status: if entry.is_closed {
+                    "completed".to_string()
+                } else {
+                    "running".to_string()
+                },
+            })
+            .collect::<Vec<_>>();
+        let current = current_displayed_thread_id.and_then(|current_thread_id| {
+            let current_thread_id = current_thread_id.to_string();
+            items
+                .iter()
+                .find(|item| item.id == current_thread_id)
+                .map(|item| {
+                    if let Some(role) = item.role.as_deref().filter(|role| !role.is_empty()) {
+                        format!("{} [{role}]", item.name)
+                    } else {
+                        item.name.clone()
+                    }
+                })
+        });
+
+        PayloadAgents {
+            total: items.len(),
+            current,
+            items,
+        }
+    }
+
     /// Builds the `/agent` picker subtitle from the same canonical bindings used by key handling.
     ///
     /// Keeping this text derived from the actual shortcut helpers prevents the picker copy from
@@ -350,5 +398,23 @@ mod tests {
             state.active_agent_label(Some(main_thread_id), Some(main_thread_id)),
             Some("Main [default]".to_string())
         );
+    }
+
+    #[test]
+    fn status_line_agents_excludes_primary_and_tracks_liveness() {
+        let (mut state, main_thread_id, first_agent_id, second_agent_id) = populated_state();
+        state.mark_closed(second_agent_id);
+
+        let agents = state.status_line_agents(Some(first_agent_id), Some(main_thread_id));
+
+        assert_eq!(agents.total, 2);
+        assert_eq!(agents.current, Some("Robie [explorer]".to_string()));
+        assert_eq!(agents.items.len(), 2);
+        assert_eq!(agents.items[0].id, first_agent_id.to_string());
+        assert_eq!(agents.items[0].name, "Robie");
+        assert_eq!(agents.items[0].role, Some("explorer".to_string()));
+        assert_eq!(agents.items[0].status, "running");
+        assert_eq!(agents.items[1].id, second_agent_id.to_string());
+        assert_eq!(agents.items[1].status, "completed");
     }
 }

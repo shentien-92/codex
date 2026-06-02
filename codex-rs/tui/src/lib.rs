@@ -178,6 +178,7 @@ mod status_indicator_widget;
 mod status_line_command;
 mod streaming;
 mod style;
+mod subagent_notification;
 mod terminal_palette;
 mod terminal_probe;
 mod terminal_title;

@@ -4,6 +4,7 @@
 //! live-only side effects.
 
 use super::*;
+use crate::subagent_notification::status_line_agent_item_from_notification;
 
 impl ChatWidget {
     /// Replay a subset of initial events into the UI to seed the transcript when
@@ -73,6 +74,7 @@ impl ChatWidget {
         let replay_kind = render_source.replay_kind();
         match item {
             ThreadItem::UserMessage { content, .. } => {
+                self.sync_subagent_notifications_from_user_input(&content);
                 self.on_committed_user_message(&content, from_replay);
             }
             ThreadItem::AgentMessage {
@@ -81,6 +83,7 @@ impl ChatWidget {
                 phase,
                 memory_citation,
             } => {
+                self.sync_subagent_notification_from_text(&text);
                 self.on_agent_message_item_completed(
                     AgentMessageItem {
                         id,
@@ -195,6 +198,20 @@ impl ChatWidget {
 
         if matches!(replay_kind, Some(ReplayKind::ThreadSnapshot)) && turn_id.is_empty() {
             self.request_redraw();
+        }
+    }
+
+    fn sync_subagent_notifications_from_user_input(&mut self, content: &[UserInput]) {
+        for input in content {
+            if let UserInput::Text { text, .. } = input {
+                self.sync_subagent_notification_from_text(text);
+            }
+        }
+    }
+
+    fn sync_subagent_notification_from_text(&mut self, text: &str) {
+        if let Some(agent) = status_line_agent_item_from_notification(text) {
+            self.upsert_status_line_agent(agent);
         }
     }
 }

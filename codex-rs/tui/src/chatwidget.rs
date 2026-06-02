@@ -318,6 +318,7 @@ use crate::status::RateLimitSnapshotDisplay;
 use crate::status::remote_connection::RemoteConnectionStatus;
 use crate::status_indicator_widget::STATUS_DETAILS_DEFAULT_MAX_LINES;
 use crate::status_indicator_widget::StatusDetailsCapitalization;
+use crate::status_line_command::PayloadAgents;
 use crate::status_line_command::StatusLineCommandRunner;
 use crate::text_formatting::truncate_text;
 use crate::tui::FrameRequester;
@@ -560,6 +561,7 @@ pub(crate) struct ChatWidget {
     copy_last_response_binding: Vec<KeyBinding>,
     running_commands: HashMap<String, RunningCommand>,
     collab_agent_metadata: HashMap<ThreadId, AgentMetadata>,
+    status_line_agents: PayloadAgents,
     pending_collab_spawn_requests: HashMap<String, multi_agents::SpawnRequestSummary>,
     suppressed_exec_calls: HashSet<String>,
     skills_all: Vec<ProtocolSkillMetadata>,

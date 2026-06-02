@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::bottom_pane::StatusLineContent;
+use crate::status_line_command::PayloadAgentItem;
 
 impl ChatWidget {
     /// Update the status indicator header and details.
@@ -81,6 +82,15 @@ impl ChatWidget {
     /// user actually looking at?" and the footer stack remains a pure renderer of that decision.
     pub(crate) fn set_active_agent_label(&mut self, active_agent_label: Option<String>) {
         self.bottom_pane.set_active_agent_label(active_agent_label);
+    }
+
+    pub(crate) fn set_status_line_agents(&mut self, agents: PayloadAgents) {
+        self.status_line_agents = agents;
+    }
+
+    pub(crate) fn upsert_status_line_agent(&mut self, agent: PayloadAgentItem) {
+        self.status_line_agents.upsert_item(agent);
+        self.refresh_status_line();
     }
 
     /// Recomputes footer status-line content from config and current runtime state.

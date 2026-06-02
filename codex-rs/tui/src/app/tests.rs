@@ -1187,6 +1187,126 @@ async fn collab_receiver_notification_caches_thread_without_app_server_read() {
 }
 
 #[tokio::test]
+async fn collab_receiver_notification_updates_status_line_command_agents() {
+    let (mut app, mut app_event_rx, _op_rx, payload_path, _temp_dir) =
+        make_status_line_command_agents_test_app().await;
+    let receiver_thread_id =
+        ThreadId::from_string("00000000-0000-0000-0000-000000000125").expect("valid thread id");
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ItemStarted(ItemStartedNotification {
+            thread_id: ThreadId::new().to_string(),
+            turn_id: "turn-1".to_string(),
+            started_at_ms: 0,
+            item: ThreadItem::CollabAgentToolCall {
+                id: "wait-1".to_string(),
+                tool: codex_app_server_protocol::CollabAgentTool::Wait,
+                status: codex_app_server_protocol::CollabAgentToolCallStatus::InProgress,
+                sender_thread_id: ThreadId::new().to_string(),
+                receiver_thread_ids: vec![receiver_thread_id.to_string()],
+                prompt: None,
+                model: None,
+                reasoning_effort: None,
+                agents_states: HashMap::new(),
+            },
+        }),
+    ));
+
+    let content = recv_status_line_command_update(&mut app_event_rx).await;
+    let payload = std::fs::read_to_string(payload_path).expect("payload captured");
+    let payload: serde_json::Value = serde_json::from_str(&payload).expect("payload json");
+
+    assert_eq!(status_line_content_text(&content), "done");
+    assert_eq!(payload["agents"]["total"], 1);
+    assert_eq!(
+        payload["agents"]["items"][0]["id"],
+        receiver_thread_id.to_string()
+    );
+}
+
+#[tokio::test]
+async fn subagent_notification_updates_status_line_command_agents() {
+    let (mut app, mut app_event_rx, _op_rx, payload_path, _temp_dir) =
+        make_status_line_command_agents_test_app().await;
+    let text = r#"<subagent_notification>{"agent_path":"/root/worker","status":{"completed":"done"}}</subagent_notification>"#;
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ItemCompleted(codex_app_server_protocol::ItemCompletedNotification {
+            thread_id: ThreadId::new().to_string(),
+            turn_id: "turn-1".to_string(),
+            completed_at_ms: 0,
+            item: ThreadItem::AgentMessage {
+                id: "agent-message-1".to_string(),
+                text: text.to_string(),
+                phase: None,
+                memory_citation: None,
+            },
+        }),
+    ));
+
+    let content = recv_status_line_command_update(&mut app_event_rx).await;
+    let payload = std::fs::read_to_string(payload_path).expect("payload captured");
+    let payload: serde_json::Value = serde_json::from_str(&payload).expect("payload json");
+
+    assert_eq!(status_line_content_text(&content), "done");
+    assert_eq!(payload["agents"]["total"], 1);
+    assert_eq!(payload["agents"]["items"][0]["id"], "/root/worker");
+    assert_eq!(payload["agents"]["items"][0]["status"], "completed");
+}
+
+async fn make_status_line_command_agents_test_app() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+    tokio::sync::mpsc::UnboundedReceiver<Op>,
+    std::path::PathBuf,
+    tempfile::TempDir,
+) {
+    let (mut app, app_event_rx, op_rx) = make_test_app_with_channels().await;
+    std::fs::create_dir_all(app.chat_widget.config_ref().cwd.as_path()).expect("test cwd");
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let payload_path = temp_dir.path().join("payload.json");
+    let mut config = app.chat_widget.config_ref().clone();
+    config.active_project = codex_config::config_toml::ProjectConfig {
+        trust_level: Some(codex_protocol::config_types::TrustLevel::Trusted),
+    };
+    config.tui_status_line_command = Some(codex_config::types::StatusLineCommandConfig {
+        command: vec![
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            "cat > \"$0\"; printf done".to_string(),
+            payload_path.to_string_lossy().to_string(),
+        ],
+        refresh_interval_ms: None,
+        max_lines: None,
+    });
+    let replacement = ChatWidget::new_with_app_event(ChatWidgetInit {
+        config,
+        frame_requester: crate::tui::FrameRequester::test_dummy(),
+        app_event_tx: app.app_event_tx.clone(),
+        workspace_command_runner: None,
+        initial_user_message: None,
+        enhanced_keys_supported: app.enhanced_keys_supported,
+        has_chatgpt_account: app.chat_widget.has_chatgpt_account(),
+        model_catalog: app.model_catalog.clone(),
+        feedback: app.feedback.clone(),
+        is_first_run: false,
+        status_account_display: app.chat_widget.status_account_display().cloned(),
+        runtime_model_provider_base_url: app
+            .chat_widget
+            .runtime_model_provider_base_url()
+            .map(str::to_string),
+        initial_plan_type: app.chat_widget.current_plan_type(),
+        model: Some(app.chat_widget.current_model().to_string()),
+        startup_tooltip_override: None,
+        status_line_invalid_items_warned: app.status_line_invalid_items_warned.clone(),
+        terminal_title_invalid_items_warned: app.terminal_title_invalid_items_warned.clone(),
+        session_telemetry: app.session_telemetry.clone(),
+    });
+    app.replace_chat_widget(replacement);
+    (app, app_event_rx, op_rx, payload_path, temp_dir)
+}
+
+#[tokio::test]
 async fn collab_receiver_notification_does_not_cache_not_found_thread() {
     let mut app = make_test_app().await;
     let receiver_thread_id =
@@ -4344,6 +4464,24 @@ fn lines_to_single_string(lines: &[Line<'_>]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+async fn recv_status_line_command_update(
+    rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+) -> crate::bottom_pane::StatusLineContent {
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("timed out waiting for status line command update")
+            .expect("app event channel should stay open");
+        if let AppEvent::StatusLineCommandUpdated { content } = event {
+            return content;
+        }
+    }
+}
+
+fn status_line_content_text(content: &crate::bottom_pane::StatusLineContent) -> String {
+    lines_to_single_string(content.lines())
 }
 
 fn test_session_telemetry(config: &Config, model: &str) -> SessionTelemetry {
