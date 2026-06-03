@@ -1,0 +1,10 @@
+{
+  "gate": "pre-dev",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-03T03:34:17.640057+00:00",
+  "source": "trellis-before-dev",
+  "specsRead": [
+    ".trellis/spec/guides/index.md",
+    ".trellis/spec/codex/frontend/index.md"
+  ]
+}

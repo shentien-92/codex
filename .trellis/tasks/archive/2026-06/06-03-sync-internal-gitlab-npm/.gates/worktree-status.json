@@ -1,0 +1,9 @@
+{
+  "gate": "worktree-status",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-03T03:57:53.280420+00:00",
+  "command": "git status --short",
+  "exitCode": 0,
+  "stdout": " M .agents/skills/trellis-before-dev/SKILL.md\n M .agents/skills/trellis-check/SKILL.md\n M .agents/skills/trellis-finish-work/SKILL.md\n M .agents/skills/trellis-update-spec/SKILL.md\n M .codex/hooks.json\n M .codex/hooks/session-start.py\n M .trellis/scripts/common/task_store.py\n M .trellis/scripts/task.py\n M .trellis/workflow.md\n?? .codex/hooks/gate-stop.py\n?? .trellis/scripts/common/task_gates.py\n?? .trellis/tasks/06-03-sync-internal-gitlab-npm/\n",
+  "stderr": ""
+}
