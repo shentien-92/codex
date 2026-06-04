@@ -1,0 +1,11 @@
+{
+  "gate": "worktree-status",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T06:05:43.138635+00:00",
+  "overwritten": true,
+  "overwriteReason": "Recorded after committing MCP startup session/subagent coverage.",
+  "command": "git status --short",
+  "exitCode": 0,
+  "stdout": " M .trellis/workspace/xiuran/journal-1.md\n?? .trellis/tasks/06-04-mcp-startup-nonblocking-gap-completion/.gates/commit.json\n",
+  "stderr": ""
+}
