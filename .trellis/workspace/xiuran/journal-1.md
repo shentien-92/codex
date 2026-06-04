@@ -239,3 +239,50 @@ Updated the Codex custom statusline Trellis segment to show compact task title/s
 ### Next Steps
 
 - None - task complete
+
+### Moon Session Upload
+
+- Time: 2026-06-04T04:50:41.952500+00:00
+- Session: `019e90f6-7353-7d70-8f7b-09cb6fa9a890`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T04:52:20.101232+00:00
+- Session: `019e90f6-7353-7d70-8f7b-09cb6fa9a890`
+- Status: `skipped`
+- Reason: `disabled`
+
+
+## Session 8: MCP startup nonblocking session coverage
+
+**Date**: 2026-06-04
+**Task**: MCP startup nonblocking session coverage
+**Branch**: `ralph/rust-v0.135.0-custom`
+
+### Summary
+
+Added codex-core integration coverage for optional MCP pending behavior across parent turns, spawned subagents, later readiness, and required MCP failure semantics; updated Trellis quality evidence and archived the task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `227329efb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
