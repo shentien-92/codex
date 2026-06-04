@@ -8,7 +8,8 @@ Usage:
     python3 task.py add-context <dir> <file> <path> [reason] # Add jsonl entry
     python3 task.py validate <dir>              # Validate jsonl files
     python3 task.py list-context <dir>          # List jsonl entries
-    python3 task.py start <dir>                 # Set active task
+    python3 task.py start <dir> [--approved]    # Set active task
+    python3 task.py gate <gate> <dir> [...]      # Write gate marker
     python3 task.py current [--source]          # Show active task
     python3 task.py finish                      # Clear active task
     python3 task.py set-branch <dir> <branch>   # Set git branch
@@ -45,6 +46,17 @@ from common.active_task import (
 from common.io import read_json, write_json
 from common.task_utils import resolve_task_dir, run_task_hooks
 from common.tasks import iter_active_tasks, children_progress
+from common.task_gates import (
+    check_start_gates,
+    check_stop_gates,
+    print_gate_failure,
+    write_changes_marker,
+    write_commit_marker,
+    write_pre_dev_marker,
+    write_quality_marker,
+    write_spec_update_marker,
+    write_worktree_status_marker,
+)
 
 # Import command handlers from split modules (also re-exports for plan.py compatibility)
 from common.task_store import (
@@ -91,6 +103,11 @@ def cmd_start(args: argparse.Namespace) -> int:
         task_dir = str(full_path)
 
     task_json_path = full_path / FILE_TASK_JSON
+
+    gate_result = check_start_gates(repo_root, full_path, bool(getattr(args, "approved", False)))
+    if not gate_result.ok:
+        print_gate_failure(gate_result)
+        return 1
 
     if not resolve_context_key():
         # Degraded mode: no session identity available.
@@ -143,21 +160,114 @@ def cmd_start(args: argparse.Namespace) -> int:
 def cmd_finish(args: argparse.Namespace) -> int:
     """Clear active task."""
     repo_root = get_repo_root()
-    active = clear_active_task(repo_root)
+    active = resolve_active_task(repo_root)
     current = active.task_path
 
     if not current:
         print(colored("No current task set", Colors.YELLOW))
         return 0
 
-    # Resolve task.json path before clearing
-    task_json_path = repo_root / current / FILE_TASK_JSON
+    task_dir = resolve_task_dir(current, repo_root)
+    if not active.stale and task_dir.is_dir():
+        gate_result = check_stop_gates(repo_root, task_dir)
+        if not gate_result.ok:
+            print_gate_failure(gate_result)
+            return 1
+
+    active = clear_active_task(repo_root)
+    task_json_path = task_dir / FILE_TASK_JSON
 
     print(colored(f"✓ Cleared current task (was: {current})", Colors.GREEN))
     print(f"Source: {active.source}")
 
     if task_json_path.is_file():
         run_task_hooks("after_finish", task_json_path, repo_root)
+    return 0
+
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    """Write task gate markers."""
+    if not getattr(args, "gate_name", None):
+        print(colored("Error: gate name is required", Colors.RED))
+        return 1
+
+    repo_root = get_repo_root()
+    task_dir = resolve_task_dir(args.dir, repo_root)
+    if not task_dir.is_dir():
+        print(colored(f"Error: Task not found: {args.dir}", Colors.RED))
+        return 1
+
+    gate = args.gate_name
+    force = bool(getattr(args, "force", False))
+    overwrite_reason = (getattr(args, "overwrite_reason", "") or "").strip()
+    ok = False
+    if gate == "pre-dev":
+        ok = write_pre_dev_marker(
+            task_dir,
+            list(getattr(args, "spec", []) or []),
+            force=force,
+            overwrite_reason=overwrite_reason,
+        )
+    elif gate == "changes":
+        reason = (getattr(args, "reason", "") or "").strip()
+        if not reason:
+            print(colored("Error: --reason is required for changes marker", Colors.RED))
+            return 1
+        ok = write_changes_marker(
+            task_dir,
+            args.has_relevant_changes == "true",
+            reason,
+            force=force,
+            overwrite_reason=overwrite_reason,
+        )
+    elif gate == "quality":
+        quality_commands = list(getattr(args, "quality_command", []) or [])
+        if not any(cmd.strip() for cmd in quality_commands):
+            print(colored("Error: at least one --command is required for quality marker", Colors.RED))
+            return 1
+        ok = write_quality_marker(
+            task_dir,
+            quality_commands,
+            getattr(args, "result", ""),
+            force=force,
+            overwrite_reason=overwrite_reason,
+        )
+    elif gate == "worktree-status":
+        ok = write_worktree_status_marker(
+            repo_root,
+            task_dir,
+            force=force,
+            overwrite_reason=overwrite_reason,
+        )
+    elif gate == "spec-update":
+        reason = (getattr(args, "reason", "") or "").strip()
+        if args.status == "not-needed" and not reason:
+            print(colored("Error: --reason is required when spec-update status is not-needed", Colors.RED))
+            return 1
+        ok = write_spec_update_marker(
+            task_dir,
+            args.status,
+            reason,
+            force=force,
+            overwrite_reason=overwrite_reason,
+        )
+    elif gate == "commit":
+        reason = (getattr(args, "reason", "") or "").strip()
+        if args.status == "skipped" and not reason:
+            print(colored("Error: --reason is required when commit status is skipped", Colors.RED))
+            return 1
+        ok = write_commit_marker(
+            task_dir,
+            args.status,
+            reason,
+            force=force,
+            overwrite_reason=overwrite_reason,
+        )
+
+    if not ok:
+        print(colored(f"Error: failed to write gate marker: {gate}", Colors.RED))
+        return 1
+    print(colored(f"✓ Gate marker written: {gate}", Colors.GREEN))
     return 0
 
 
@@ -310,7 +420,8 @@ Usage:
   python3 task.py add-context <dir> <jsonl> <path> [reason]  Add entry to jsonl
   python3 task.py validate <dir>                     Validate jsonl files
   python3 task.py list-context <dir>                 List jsonl entries
-  python3 task.py start <dir>                        Set active task
+  python3 task.py start <dir> [--approved]           Set active task
+  python3 task.py gate <gate> <dir> [...]            Write task gate marker
   python3 task.py current [--source]                 Show active task
   python3 task.py finish                             Clear active task
   python3 task.py set-branch <dir> <branch>          Set git branch
@@ -369,12 +480,12 @@ def main() -> int:
             file=sys.stderr,
         )
         print(
-            "sub-agent-capable platforms and curated by the AI during Phase 1.3.",
+            "sub-agent-capable platforms and curated by the AI during planning when needed.",
             file=sys.stderr,
         )
-        print("See .trellis/workflow.md Phase 1.3 or run:", file=sys.stderr)
+        print("See .trellis/workflow.md planning artifact guidance or run:", file=sys.stderr)
         print(
-            "  python3 ./.trellis/scripts/get_context.py --mode phase --step 1.3",
+            "  python3 ./.trellis/scripts/get_context.py --mode phase --step 1",
             file=sys.stderr,
         )
         print(
@@ -417,6 +528,42 @@ def main() -> int:
     # start
     p_start = subparsers.add_parser("start", help="Set active task")
     p_start.add_argument("dir", help="Task directory")
+    p_start.add_argument("--approved", action="store_true", help="Confirm implementation approval for Codex inline")
+
+    # gate
+    p_gate = subparsers.add_parser("gate", help="Write task gate marker")
+    gate_subparsers = p_gate.add_subparsers(dest="gate_name", help="Gate marker")
+
+    p_gate_pre = gate_subparsers.add_parser("pre-dev", help="Write pre-dev marker")
+    p_gate_pre.add_argument("dir", help="Task directory")
+    p_gate_pre.add_argument("--spec", action="append", default=[], help="Spec path read before development")
+
+    p_gate_changes = gate_subparsers.add_parser("changes", help="Declare changed/no-change status")
+    p_gate_changes.add_argument("dir", help="Task directory")
+    p_gate_changes.add_argument("--has-relevant-changes", choices=["true", "false"], required=True)
+    p_gate_changes.add_argument("--reason", required=True)
+
+    p_gate_quality = gate_subparsers.add_parser("quality", help="Write quality marker")
+    p_gate_quality.add_argument("dir", help="Task directory")
+    p_gate_quality.add_argument("--command", dest="quality_command", action="append", default=[], help="Validation command that passed")
+    p_gate_quality.add_argument("--result", choices=["passed"], required=True)
+
+    p_gate_worktree = gate_subparsers.add_parser("worktree-status", help="Record git status --short")
+    p_gate_worktree.add_argument("dir", help="Task directory")
+
+    p_gate_spec = gate_subparsers.add_parser("spec-update", help="Record spec update decision")
+    p_gate_spec.add_argument("dir", help="Task directory")
+    p_gate_spec.add_argument("--status", choices=["updated", "not-needed"], required=True)
+    p_gate_spec.add_argument("--reason", default="")
+
+    p_gate_commit = gate_subparsers.add_parser("commit", help="Record commit decision")
+    p_gate_commit.add_argument("dir", help="Task directory")
+    p_gate_commit.add_argument("--status", choices=["committed", "skipped"], required=True)
+    p_gate_commit.add_argument("--reason", default="")
+
+    for gate_parser in (p_gate_pre, p_gate_changes, p_gate_quality, p_gate_worktree, p_gate_spec, p_gate_commit):
+        gate_parser.add_argument("--force", action="store_true", help="Overwrite an existing marker")
+        gate_parser.add_argument("--overwrite-reason", default="", help="Required with --force")
 
     # current
     p_current = subparsers.add_parser("current", help="Show active task")
@@ -477,6 +624,7 @@ def main() -> int:
         "validate": cmd_validate,
         "list-context": cmd_list_context,
         "start": cmd_start,
+        "gate": cmd_gate,
         "current": cmd_current,
         "finish": cmd_finish,
         "set-branch": cmd_set_branch,

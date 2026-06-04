@@ -22,6 +22,7 @@ use super::emit_tool_call_end;
 use super::normalize_optional_string;
 use super::parse_args_with_default;
 use super::parse_arguments;
+use super::readiness_error_to_model_message;
 use super::serialize_function_output;
 
 pub struct ListMcpResourcesHandler;
@@ -87,10 +88,13 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourcesHandler {
                     cursor: Some(value),
                 });
                 let result = session
-                    .list_resources(&server_name, params)
+                    .list_resources_if_ready(&server_name, params)
                     .await
                     .map_err(|err| {
-                        FunctionCallError::RespondToModel(format!("resources/list failed: {err:#}"))
+                        FunctionCallError::RespondToModel(readiness_error_to_model_message(
+                            "resources/list",
+                            err,
+                        ))
                     })?;
                 Ok(ListResourcesPayload::from_single_server(
                     server_name,
@@ -108,7 +112,7 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourcesHandler {
                     .mcp_connection_manager
                     .read()
                     .await
-                    .list_all_resources()
+                    .list_available_resources()
                     .await;
                 Ok(ListResourcesPayload::from_all_servers(resources))
             }

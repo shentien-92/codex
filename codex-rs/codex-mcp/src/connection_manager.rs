@@ -81,6 +81,18 @@ pub struct McpConnectionManager {
     startup_cancellation_token: CancellationToken,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum McpServerReadinessError {
+    #[error("MCP server `{server}` is still starting")]
+    StillStarting { server: String },
+    #[error("MCP server `{server}` failed to start: {error}")]
+    StartupFailed { server: String, error: String },
+    #[error("unknown MCP server '{server}'")]
+    Missing { server: String },
+    #[error(transparent)]
+    Request(anyhow::Error),
+}
+
 impl McpConnectionManager {
     pub fn new_uninitialized(
         approval_policy: &Constrained<AskForApproval>,
@@ -460,6 +472,12 @@ impl McpConnectionManager {
         normalize_tools_for_model_with_prefix(tools, self.prefix_mcp_tool_names)
     }
 
+    pub fn tool_info_if_available(&self, server: &str, tool_name: &str) -> Option<ToolInfo> {
+        self.list_available_tools()
+            .into_iter()
+            .find(|tool_info| tool_info.server_name == server && tool_info.tool.name == tool_name)
+    }
+
     /// Force-refresh codex apps tools by bypassing the in-process cache.
     ///
     /// On success, the refreshed tools replace the cache contents and the
@@ -541,58 +559,32 @@ impl McpConnectionManager {
             let Ok(managed_client) = async_managed_client.client().await else {
                 continue;
             };
-            let timeout = managed_client.tool_timeout;
-            let client = managed_client.client.clone();
-
-            join_set.spawn(async move {
-                let mut collected: Vec<Resource> = Vec::new();
-                let mut cursor: Option<String> = None;
-
-                loop {
-                    let params = cursor.as_ref().map(|next| PaginatedRequestParams {
-                        meta: None,
-                        cursor: Some(next.clone()),
-                    });
-                    let response = match client.list_resources(params, timeout).await {
-                        Ok(result) => result,
-                        Err(err) => return (server_name, Err(err)),
-                    };
-
-                    collected.extend(response.resources);
-
-                    match response.next_cursor {
-                        Some(next) => {
-                            if cursor.as_ref() == Some(&next) {
-                                return (
-                                    server_name,
-                                    Err(anyhow!("resources/list returned duplicate cursor")),
-                                );
-                            }
-                            cursor = Some(next);
-                        }
-                        None => return (server_name, Ok(collected)),
-                    }
-                }
-            });
+            spawn_list_resources_task(&mut join_set, server_name, managed_client);
         }
 
-        let mut aggregated: HashMap<String, Vec<Resource>> = HashMap::new();
+        collect_list_resources_tasks(join_set).await
+    }
 
-        while let Some(join_res) = join_set.join_next().await {
-            match join_res {
-                Ok((server_name, Ok(resources))) => {
-                    aggregated.insert(server_name, resources);
+    /// Returns resources from ready MCP servers without waiting for initializing servers.
+    pub async fn list_available_resources(&self) -> HashMap<String, Vec<Resource>> {
+        let mut join_set = JoinSet::new();
+
+        for (server_name, async_managed_client) in &self.clients {
+            let server_name = server_name.clone();
+            match async_managed_client.client_if_available() {
+                Some(Ok(managed_client)) => {
+                    spawn_list_resources_task(&mut join_set, server_name, managed_client);
                 }
-                Ok((server_name, Err(err))) => {
-                    warn!("Failed to list resources for MCP server '{server_name}': {err:#}");
+                Some(Err(err)) => {
+                    warn!("Skipping resources for failed MCP server '{server_name}': {err:#}");
                 }
-                Err(err) => {
-                    warn!("Task panic when listing resources for MCP server: {err:#}");
+                None => {
+                    trace!("skipping pending MCP server resources for '{server_name}'");
                 }
             }
         }
 
-        aggregated
+        collect_list_resources_tasks(join_set).await
     }
 
     /// Returns a single map that contains all resource templates. Each key is the
@@ -607,62 +599,36 @@ impl McpConnectionManager {
             let Ok(managed_client) = async_managed_client.client().await else {
                 continue;
             };
-            let client = managed_client.client.clone();
-            let timeout = managed_client.tool_timeout;
-
-            join_set.spawn(async move {
-                let mut collected: Vec<ResourceTemplate> = Vec::new();
-                let mut cursor: Option<String> = None;
-
-                loop {
-                    let params = cursor.as_ref().map(|next| PaginatedRequestParams {
-                        meta: None,
-                        cursor: Some(next.clone()),
-                    });
-                    let response = match client.list_resource_templates(params, timeout).await {
-                        Ok(result) => result,
-                        Err(err) => return (server_name_cloned, Err(err)),
-                    };
-
-                    collected.extend(response.resource_templates);
-
-                    match response.next_cursor {
-                        Some(next) => {
-                            if cursor.as_ref() == Some(&next) {
-                                return (
-                                    server_name_cloned,
-                                    Err(anyhow!(
-                                        "resources/templates/list returned duplicate cursor"
-                                    )),
-                                );
-                            }
-                            cursor = Some(next);
-                        }
-                        None => return (server_name_cloned, Ok(collected)),
-                    }
-                }
-            });
+            spawn_list_resource_templates_task(&mut join_set, server_name_cloned, managed_client);
         }
 
-        let mut aggregated: HashMap<String, Vec<ResourceTemplate>> = HashMap::new();
+        collect_list_resource_templates_tasks(join_set).await
+    }
 
-        while let Some(join_res) = join_set.join_next().await {
-            match join_res {
-                Ok((server_name, Ok(templates))) => {
-                    aggregated.insert(server_name, templates);
+    /// Returns resource templates from ready MCP servers without waiting for initializing servers.
+    pub async fn list_available_resource_templates(
+        &self,
+    ) -> HashMap<String, Vec<ResourceTemplate>> {
+        let mut join_set = JoinSet::new();
+
+        for (server_name, async_managed_client) in &self.clients {
+            let server_name = server_name.clone();
+            match async_managed_client.client_if_available() {
+                Some(Ok(managed_client)) => {
+                    spawn_list_resource_templates_task(&mut join_set, server_name, managed_client);
                 }
-                Ok((server_name, Err(err))) => {
+                Some(Err(err)) => {
                     warn!(
-                        "Failed to list resource templates for MCP server '{server_name}': {err:#}"
+                        "Skipping resource templates for failed MCP server '{server_name}': {err:#}"
                     );
                 }
-                Err(err) => {
-                    warn!("Task panic when listing resource templates for MCP server: {err:#}");
+                None => {
+                    trace!("skipping pending MCP server resource templates for '{server_name}'");
                 }
             }
         }
 
-        aggregated
+        collect_list_resource_templates_tasks(join_set).await
     }
 
     /// Invoke the tool indicated by the (server, tool) pair.
@@ -729,6 +695,23 @@ impl McpConnectionManager {
             .with_context(|| format!("resources/list failed for `{server}`"))
     }
 
+    /// List resources from the specified server only if startup has completed.
+    pub async fn list_resources_if_ready(
+        &self,
+        server: &str,
+        params: Option<PaginatedRequestParams>,
+    ) -> Result<ListResourcesResult, McpServerReadinessError> {
+        let managed = self.client_by_name_if_ready(server)?;
+        let timeout = managed.tool_timeout;
+
+        managed
+            .client
+            .list_resources(params, timeout)
+            .await
+            .with_context(|| format!("resources/list failed for `{server}`"))
+            .map_err(McpServerReadinessError::Request)
+    }
+
     /// List resource templates from the specified server.
     pub async fn list_resource_templates(
         &self,
@@ -743,6 +726,23 @@ impl McpConnectionManager {
             .list_resource_templates(params, timeout)
             .await
             .with_context(|| format!("resources/templates/list failed for `{server}`"))
+    }
+
+    /// List resource templates from the specified server only if startup has completed.
+    pub async fn list_resource_templates_if_ready(
+        &self,
+        server: &str,
+        params: Option<PaginatedRequestParams>,
+    ) -> Result<ListResourceTemplatesResult, McpServerReadinessError> {
+        let managed = self.client_by_name_if_ready(server)?;
+        let client = managed.client.clone();
+        let timeout = managed.tool_timeout;
+
+        client
+            .list_resource_templates(params, timeout)
+            .await
+            .with_context(|| format!("resources/templates/list failed for `{server}`"))
+            .map_err(McpServerReadinessError::Request)
     }
 
     /// Read a resource from the specified server.
@@ -762,6 +762,24 @@ impl McpConnectionManager {
             .with_context(|| format!("resources/read failed for `{server}` ({uri})"))
     }
 
+    /// Read a resource from the specified server only if startup has completed.
+    pub async fn read_resource_if_ready(
+        &self,
+        server: &str,
+        params: ReadResourceRequestParams,
+    ) -> Result<ReadResourceResult, McpServerReadinessError> {
+        let managed = self.client_by_name_if_ready(server)?;
+        let client = managed.client.clone();
+        let timeout = managed.tool_timeout;
+        let uri = params.uri.clone();
+
+        client
+            .read_resource(params, timeout)
+            .await
+            .with_context(|| format!("resources/read failed for `{server}` ({uri})"))
+            .map_err(McpServerReadinessError::Request)
+    }
+
     async fn client_by_name(&self, name: &str) -> Result<ManagedClient> {
         self.clients
             .get(name)
@@ -770,6 +788,27 @@ impl McpConnectionManager {
             .await
             .context("failed to get client")
     }
+
+    fn client_by_name_if_ready(
+        &self,
+        name: &str,
+    ) -> Result<ManagedClient, McpServerReadinessError> {
+        let Some(client) = self.clients.get(name) else {
+            return Err(McpServerReadinessError::Missing {
+                server: name.to_string(),
+            });
+        };
+        match client.client_if_available() {
+            Some(Ok(managed_client)) => Ok(managed_client),
+            Some(Err(error)) => Err(McpServerReadinessError::StartupFailed {
+                server: name.to_string(),
+                error: error.to_string(),
+            }),
+            None => Err(McpServerReadinessError::StillStarting {
+                server: name.to_string(),
+            }),
+        }
+    }
 }
 
 impl Drop for McpConnectionManager {
@@ -777,6 +816,132 @@ impl Drop for McpConnectionManager {
         self.startup_cancellation_token.cancel();
         self.clients.clear();
     }
+}
+
+fn spawn_list_resources_task(
+    join_set: &mut JoinSet<(String, Result<Vec<Resource>>)>,
+    server_name: String,
+    managed_client: ManagedClient,
+) {
+    let timeout = managed_client.tool_timeout;
+    let client = managed_client.client;
+
+    join_set.spawn(async move {
+        let mut collected: Vec<Resource> = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let params = cursor.as_ref().map(|next| PaginatedRequestParams {
+                meta: None,
+                cursor: Some(next.clone()),
+            });
+            let response = match client.list_resources(params, timeout).await {
+                Ok(result) => result,
+                Err(err) => return (server_name, Err(err)),
+            };
+
+            collected.extend(response.resources);
+
+            match response.next_cursor {
+                Some(next) => {
+                    if cursor.as_ref() == Some(&next) {
+                        return (
+                            server_name,
+                            Err(anyhow!("resources/list returned duplicate cursor")),
+                        );
+                    }
+                    cursor = Some(next);
+                }
+                None => return (server_name, Ok(collected)),
+            }
+        }
+    });
+}
+
+async fn collect_list_resources_tasks(
+    mut join_set: JoinSet<(String, Result<Vec<Resource>>)>,
+) -> HashMap<String, Vec<Resource>> {
+    let mut aggregated: HashMap<String, Vec<Resource>> = HashMap::new();
+
+    while let Some(join_res) = join_set.join_next().await {
+        match join_res {
+            Ok((server_name, Ok(resources))) => {
+                aggregated.insert(server_name, resources);
+            }
+            Ok((server_name, Err(err))) => {
+                warn!("Failed to list resources for MCP server '{server_name}': {err:#}");
+            }
+            Err(err) => {
+                warn!("Task panic when listing resources for MCP server: {err:#}");
+            }
+        }
+    }
+
+    aggregated
+}
+
+fn spawn_list_resource_templates_task(
+    join_set: &mut JoinSet<(String, Result<Vec<ResourceTemplate>>)>,
+    server_name: String,
+    managed_client: ManagedClient,
+) {
+    let client = managed_client.client.clone();
+    let timeout = managed_client.tool_timeout;
+
+    join_set.spawn(async move {
+        let mut collected: Vec<ResourceTemplate> = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let params = cursor.as_ref().map(|next| PaginatedRequestParams {
+                meta: None,
+                cursor: Some(next.clone()),
+            });
+            let response = match client.list_resource_templates(params, timeout).await {
+                Ok(result) => result,
+                Err(err) => return (server_name, Err(err)),
+            };
+
+            collected.extend(response.resource_templates);
+
+            match response.next_cursor {
+                Some(next) => {
+                    if cursor.as_ref() == Some(&next) {
+                        return (
+                            server_name,
+                            Err(anyhow!(
+                                "resources/templates/list returned duplicate cursor"
+                            )),
+                        );
+                    }
+                    cursor = Some(next);
+                }
+                None => return (server_name, Ok(collected)),
+            }
+        }
+    });
+}
+
+async fn collect_list_resource_templates_tasks(
+    mut join_set: JoinSet<(String, Result<Vec<ResourceTemplate>>)>,
+) -> HashMap<String, Vec<ResourceTemplate>> {
+    let mut aggregated: HashMap<String, Vec<ResourceTemplate>> = HashMap::new();
+
+    while let Some(join_res) = join_set.join_next().await {
+        match join_res {
+            Ok((server_name, Ok(templates))) => {
+                aggregated.insert(server_name, templates);
+            }
+            Ok((server_name, Err(err))) => {
+                warn!("Failed to list resource templates for MCP server '{server_name}': {err:#}");
+            }
+            Err(err) => {
+                warn!("Task panic when listing resource templates for MCP server: {err:#}");
+            }
+        }
+    }
+
+    aggregated
 }
 
 async fn emit_update(

@@ -1,0 +1,14 @@
+interface:
+  display_name: "Gaea 知识库管理"
+  short_description: "通过统一网关查询、维护和排查 Gaea/Librify 知识库"
+  default_prompt: |
+    使用 $knowledge-manager。核心纪律（与 SKILL.md 决策树保持一致）：
+
+    1. 入口唯一：所有调用走 {GAEA_BASE_URL}/know/skillApi/cli/exec，请求体 {"command":"...","args":{...}}；只有 ApiResponse.code == 0 视为成功，code != 0 一律按失败处理，禁止直连数据库或业务接口。
+    2. 鉴权：每次请求都带 librify-token 头（来源优先级：环境变量 LIBRIFY_TOKEN > 技能根目录 librify-token 文件）。鉴权失败时明确告知用户去 https://librify.qunhequnhe.com/#/tool/knowledgeManagerSkill 取 Token 并写入文件或环境变量，且不要把鉴权失败当作"没查到数据"。
+    3. 先分类：结构 / 原文 / 召回 / 维护 / 反馈；范围不明确先执行 roots，所有 rootId/rootnodeid 必须使用 roots 实时返回值（用户已明确给出 ID 时除外）。
+    4. 读操作优先包装命令（node、nodes、nodes-tree、document、documents），表达不了再用 sql-query；SQL 必须单条 SELECT/WITH，必带 LIMIT，MySQL nodes/documents 必带 isDeleted = 0；禁止 DDL/DML 与 FOR UPDATE。
+    5. 数据来源边界：原文以 MySQL documents 为准，召回覆盖以 PostgreSQL knowledge 为准；排查"文档存在但搜不到"先 MySQL 定位 docId，再 PostgreSQL 查切片。
+    6. 写操作只走专用命令（create-/rename-/move-/delete-node、insert-/rename-/update-/upsert-/delete-doc）。幂等同步首选 upsert-doc；按 docId 改属性用 update-doc；明确新建用 insert-doc；权限和节点边界由后端校验。
+    7. 反馈纪律：用户指出某文档/页面/联系人/口径有问题时，必须先定位具体 docId 再 report-feedback，selectedDocIds 必填，不要只在 comment 写标题；MISSING_KNOWLEDGE 仅用于"完全没有相关文档"，文档存在但内容过期/错误/矛盾用 WRONG_ANSWER 或 LOW_QUALITY，正确文档存在但未召回或排序低用 BAD_RECALL 并填 expectedDocIds。
+    8. 输出规范：每次执行说明 command、实际范围（rootId/nodeId/docId/关键词）、命中数量、关键结论；执行反馈时额外说明 feedbackId、feedbackType、selectedDocIds、expectedDocIds；命令失败时说明 message 与下一步动作。

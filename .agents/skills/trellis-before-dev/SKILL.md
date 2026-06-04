@@ -7,28 +7,40 @@ Read the relevant development guidelines before starting your task.
 
 Execute these steps:
 
-1. **Discover packages and their spec layers**:
+1. **Read current task artifacts**:
+   - `prd.md` for requirements and acceptance criteria
+   - `design.md` if present for technical design
+   - `implement.md` if present for execution order and validation plan
+   - `.trellis/spec/context/CONTEXT.md` when the task depends on project terminology or domain boundaries
+   - `.trellis/spec/adr/` when the task involves hard-to-reverse technical decisions or architectural trade-offs
+
+2. **Discover packages and their spec layers**:
    ```bash
    python3 ./.trellis/scripts/get_context.py --mode packages
    ```
 
-2. **Identify which specs apply** to your task based on:
+3. **Identify which specs apply** to your task based on:
    - Which package you're modifying (e.g., `cli/`, `docs-site/`)
    - What type of work (backend, frontend, unit-test, docs, etc.)
+   - Any spec/research paths referenced by the task artifacts
 
-3. **Read the spec index** for each relevant module:
+4. **Read the spec index** for each relevant module:
    ```bash
    cat .trellis/spec/<package>/<layer>/index.md
    ```
    Follow the **"Pre-Development Checklist"** section in the index.
 
-4. **Read the specific guideline files** listed in the Pre-Development Checklist that are relevant to your task. The index is NOT the goal — it points you to the actual guideline files (e.g., `error-handling.md`, `conventions.md`, `mock-strategies.md`). Read those files to understand the coding standards and patterns.
+5. **Read the specific guideline files** listed in the Pre-Development Checklist that are relevant to your task. The index is NOT the goal — it points you to the actual guideline files (e.g., `error-handling.md`, `conventions.md`, `mock-strategies.md`). Read those files to understand the coding standards and patterns.
 
-5. **Always read shared guides**:
+6. **Read domain and decision context when relevant**:
+   - `cat .trellis/spec/context/CONTEXT.md` for requirements, planning, implementation, or review that uses project language.
+   - Inspect `.trellis/spec/adr/` for architecture-sensitive work. ADRs are optional; if the directory or files do not exist, continue without treating that as an error.
+
+7. **Always read shared guides**:
    ```bash
    cat .trellis/spec/guides/index.md
    ```
 
-6. Understand the coding standards and patterns you need to follow, then proceed with your development plan.
+8. Understand the coding standards and patterns you need to follow, then proceed with your development plan.
 
 This step is **mandatory** before writing any code.

@@ -1,6 +1,7 @@
 use codex_config::ConfigLayerStack;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_core::ModelClient;
+use codex_core::ModelClientStreamRequestKind;
 use codex_core::NewThread;
 use codex_core::Prompt;
 use codex_core::ResponseEvent;
@@ -928,6 +929,7 @@ async fn send_provider_auth_request(server: &MockServer, auth: ModelProviderAuth
             summary.unwrap_or(ReasoningSummary::Auto),
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -2438,6 +2440,7 @@ async fn azure_responses_request_includes_store_and_reasoning_ids() {
             summary.unwrap_or(ReasoningSummary::Auto),
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await

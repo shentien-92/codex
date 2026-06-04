@@ -1,0 +1,7 @@
+{
+  "gate": "spec-update",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T03:21:48.168224+00:00",
+  "status": "not-needed",
+  "reason": "No Rust code-spec layer exists under .trellis/spec; MCP runtime contracts are captured in this task's prd/design/implement artifacts"
+}

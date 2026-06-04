@@ -46,9 +46,19 @@ function getImplementContext(ctx, taskDir) {
     parts.push(`=== ${taskDir}/prd.md (Requirements) ===\n${prd}`)
   }
 
+  const design = ctx.readFile(join(taskDirFull, "design.md"))
+  if (design) {
+    parts.push(`=== ${taskDir}/design.md (Technical Design) ===\n${design}`)
+  }
+
   const info = ctx.readFile(join(taskDirFull, "info.md"))
   if (info) {
-    parts.push(`=== ${taskDir}/info.md (Technical Design) ===\n${info}`)
+    parts.push(`=== ${taskDir}/info.md (Task Info) ===\n${info}`)
+  }
+
+  const implementPlan = ctx.readFile(join(taskDirFull, "implement.md"))
+  if (implementPlan) {
+    parts.push(`=== ${taskDir}/implement.md (Execution Plan) ===\n${implementPlan}`)
   }
 
   return parts.join("\n\n")
@@ -71,6 +81,21 @@ function getCheckContext(ctx, taskDir) {
   const prd = ctx.readFile(join(taskDirFull, "prd.md"))
   if (prd) {
     parts.push(`=== ${taskDir}/prd.md (Requirements) ===\n${prd}`)
+  }
+
+  const design = ctx.readFile(join(taskDirFull, "design.md"))
+  if (design) {
+    parts.push(`=== ${taskDir}/design.md (Technical Design) ===\n${design}`)
+  }
+
+  const info = ctx.readFile(join(taskDirFull, "info.md"))
+  if (info) {
+    parts.push(`=== ${taskDir}/info.md (Task Info) ===\n${info}`)
+  }
+
+  const implementPlan = ctx.readFile(join(taskDirFull, "implement.md"))
+  if (implementPlan) {
+    parts.push(`=== ${taskDir}/implement.md (Execution Plan) ===\n${implementPlan}`)
   }
 
   return parts.join("\n\n")
@@ -165,8 +190,8 @@ ${originalPrompt}
 ## Workflow
 
 1. **Understand specs** - All dev specs are injected above
-2. **Understand requirements** - Read requirements and technical design
-3. **Implement feature** - Follow specs and design
+2. **Understand task artifacts** - Read requirements, technical design if present, and execution plan if present
+3. **Implement feature** - Follow specs and task artifacts
 4. **Self-check** - Ensure code quality
 
 ## Important Constraints
@@ -195,7 +220,7 @@ ${originalPrompt}
 ## Workflow
 
 1. **Review changes** - Run \`git diff --name-only\` to see all changed files
-2. **Verify requirements** - Check each requirement in prd.md is implemented
+2. **Verify task artifacts** - Check prd.md and, when present, design.md / implement.md
 3. **Spec sync** - Analyze whether changes introduce new patterns, contracts, or conventions
    - If new pattern/convention found: read target spec file → update it → update index.md if needed
    - If infra/cross-layer change: follow the 7-section mandatory template from update-spec.md
@@ -209,7 +234,8 @@ ${originalPrompt}
 - MUST read the target spec file BEFORE editing (avoid duplicating existing content)
 - Do NOT update specs for trivial changes (typos, formatting, obvious fixes)
 - If critical CODE issues found, report them clearly (fix specs, not code)
-- Verify all acceptance criteria in prd.md are met` :
+- Verify all acceptance criteria in prd.md are met
+- Verify design.md and implement.md constraints when those files are present` :
       `<!-- trellis-hook-injected -->
 # Check Agent Task
 
@@ -331,6 +357,41 @@ function commandStartsWithTrellisContext(command) {
   )
 }
 
+function sanitizeContextSegment(raw) {
+  const safe = String(raw).trim().replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._-]+|[._-]+$/g, "")
+  return safe ? safe.slice(0, 160) : ""
+}
+
+function lookupInputString(data, keys) {
+  if (!data || typeof data !== "object") return null
+  for (const key of keys) {
+    const value = data[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  for (const nestedKey of ["input", "properties", "event", "hook_input", "hookInput"]) {
+    const nested = data[nestedKey]
+    if (nested && typeof nested === "object") {
+      const value = lookupInputString(nested, keys)
+      if (value) return value
+    }
+  }
+  return null
+}
+
+function getBashContextKey(ctx, input) {
+  const existing = ctx.getContextKey(input)
+  if (existing) return existing
+
+  const sessionID = lookupInputString(input, ["session_id", "sessionId", "sessionID"])
+  if (!sessionID) return null
+
+  const directKey = sanitizeContextSegment(sessionID)
+  if (directKey?.startsWith("opencode_")) return directKey
+
+  const safeSessionID = sanitizeContextSegment(sessionID)
+  return safeSessionID ? `opencode_${safeSessionID}` : null
+}
+
 /**
  * OpenCode TUI may not expose OPENCODE_RUN_ID to Bash. The plugin hook still
  * receives session identity, so inject it into Bash commands before execution.
@@ -344,7 +405,7 @@ function injectTrellisContextIntoBash(ctx, input, output, hostPlatform, env) {
   if (!command.trim()) return false
   if (commandStartsWithTrellisContext(command)) return false
 
-  const contextKey = ctx.getContextKey(input)
+  const contextKey = getBashContextKey(ctx, input)
   if (!contextKey) return false
 
   args[commandKey] = `${buildTrellisContextPrefix(contextKey, hostPlatform, env)}${command}`
@@ -431,7 +492,7 @@ export default async ({ directory, platform: hostPlatform = process.platform, en
             }
           }
 
-          if (!taskDir) {
+          if (!taskDir && typeof ctx._resolveSingleSessionFallback === "function") {
             const fallback = ctx._resolveSingleSessionFallback()
             if (fallback?.taskPath) {
               const fallbackDir = ctx.resolveTaskDir(fallback.taskPath)

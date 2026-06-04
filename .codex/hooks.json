@@ -7,6 +7,49 @@
             "type": "command",
             "command": "python3 -X utf8 .codex/hooks/inject-workflow-state.py",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python3 -X utf8 .codex/hooks/telemetry.py prompt",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -X utf8 .codex/hooks/telemetry.py tool",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -X utf8 .codex/hooks/telemetry.py tool",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -X utf8 .codex/hooks/gate-stop.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 -X utf8 .codex/hooks/telemetry.py session_end",
+            "timeout": 10
           }
         ]
       }

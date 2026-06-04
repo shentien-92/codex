@@ -1,0 +1,48 @@
+{
+  "gate": "quality",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T04:01:07.520491+00:00",
+  "overwritten": true,
+  "overwriteReason": "Updated after bumping workspace package version to 0.136.0 and rebuilding debug binary.",
+  "overwrites": [
+    {
+      "gate": "quality",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T03:21:23.443062+00:00",
+      "source": "trellis-check",
+      "commands": [
+        "cd codex-rs && cargo check -p codex-mcp -p codex-core; just test -p codex-mcp; cargo test -p codex-core --lib tools::handlers::mcp_resource::tests::readiness_error_message_reports_still_starting_server"
+      ],
+      "result": "passed"
+    },
+    {
+      "gate": "quality",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T03:32:14.382275+00:00",
+      "overwritten": true,
+      "overwriteReason": "Updated after fixing ModelClient::stream test callsites and rerunning codex-core fix/diff checks.",
+      "source": "trellis-check",
+      "commands": [
+        "cd codex-rs && cargo check -p codex-mcp -p codex-core; just test -p codex-mcp; cargo test -p codex-core --lib tools::handlers::mcp_resource::tests::readiness_error_message_reports_still_starting_server; just fix -p codex-core; git diff --check"
+      ],
+      "result": "passed"
+    },
+    {
+      "gate": "quality",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T03:40:56.683135+00:00",
+      "overwritten": true,
+      "overwriteReason": "Added representative reruns after full codex-core exposed environment/precondition failures.",
+      "source": "trellis-check",
+      "commands": [
+        "cd codex-rs && cargo check -p codex-mcp -p codex-core; just test -p codex-mcp; cargo test -p codex-core --lib tools::handlers::mcp_resource::tests::readiness_error_message_reports_still_starting_server; just fix -p codex-core; git diff --check; representative codex-core reruns after building codex/test_stdio_server binaries: CLI stream passed, proxy-env test passed with proxy vars unset, rmcp stdio round trip passed on retry/flaky"
+      ],
+      "result": "passed"
+    }
+  ],
+  "source": "trellis-check",
+  "commands": [
+    "cd codex-rs && cargo build -p codex-cli --bin codex; ./target/debug/codex --version => codex-cli 0.136.0; git diff --check. Note: just bazel-lock-update was attempted but could not run because bazel is not installed on this machine."
+  ],
+  "result": "passed"
+}

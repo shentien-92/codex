@@ -16,7 +16,15 @@ git diff --name-only HEAD
 git status
 ```
 
-## Step 2: Read Applicable Specs
+## Step 2: Read Task Artifacts and Applicable Specs
+
+Read the current task artifacts in order:
+
+- `prd.md`
+- `design.md` if present
+- `implement.md` if present
+- `.trellis/spec/context/CONTEXT.md` when changed behavior or review criteria depend on project terminology
+- `.trellis/spec/adr/` when the change touches architectural choices or trade-offs
 
 ```bash
 python3 ./.trellis/scripts/get_context.py --mode packages
@@ -30,11 +38,43 @@ cat .trellis/spec/<package>/<layer>/index.md
 
 Read the specific guideline files referenced — the index is a pointer, not the goal.
 
+ADRs under `.trellis/spec/adr/` are optional, but the check should know they exist and inspect them when validating decisions that would be surprising without context.
+
 ## Step 3: Run Project Checks
 
 Run the project's lint, type-check, and test commands. Fix any failures before proceeding.
 
-## Step 4: Review Against Checklist
+## Step 4: Build PRD Coverage Matrix
+
+Before the general quality checklist, extract the verifiable requirements from
+`prd.md`:
+
+- numbered or bulleted items under `Requirements`
+- every checklist item under `Acceptance Criteria`
+- any must-complete checklist or behavior from `design.md` / `implement.md`
+  when present
+
+Report a PRD coverage matrix with one row per item:
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| AC-1: <original acceptance item> | pass / fail / not_verifiable | <file, test, command, screenshot, or reason> |
+
+Rules:
+
+- `pass` requires concrete evidence. Do not mark an item as passed from
+  confidence alone.
+- `fail` means the implementation is missing or wrong. Fix it when in scope,
+  then rebuild the matrix.
+- `not_verifiable` means the item cannot be proven from the available code,
+  tests, commands, or manual evidence. Explain why and list it as residual
+  risk.
+- If any item remains `fail`, do not say the task is complete, all fixed, or
+  has no remaining issues.
+- If `prd.md` has no testable acceptance criteria, report that as a PRD quality
+  problem and recommend returning to planning instead of inventing criteria.
+
+## Step 5: Review Against Checklist
 
 ### Code Quality
 
@@ -56,7 +96,7 @@ Run the project's lint, type-check, and test commands. Fix any failures before p
 
 > "If I fixed a bug or discovered something non-obvious, should I document it so future me won't hit the same issue?" → If YES, update the relevant spec doc.
 
-## Step 5: Cross-Layer Dimensions (if applicable)
+## Step 6: Cross-Layer Dimensions (if applicable)
 
 Skip this step if your change is confined to a single layer.
 
@@ -87,6 +127,7 @@ Skip this step if your change is confined to a single layer.
 
 ---
 
-## Step 6: Report and Fix
+## Step 7: Report and Fix
 
-Report violations found and fix them directly. Re-run project checks after fixes.
+Report PRD coverage first, then violations found and fixed. Re-run project
+checks after fixes.

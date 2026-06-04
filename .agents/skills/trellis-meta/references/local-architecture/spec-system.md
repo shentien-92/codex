@@ -1,6 +1,6 @@
 # Local Spec System
 
-`.trellis/spec/` is the user's project-specific engineering spec library. Trellis is not about making AI memorize conventions; it injects relevant specs or requires the AI to read them at the right time.
+`.trellis/spec/` is the user's project-specific engineering spec library, domain context, and optional architecture decision store. Trellis is not about making AI memorize conventions; it injects relevant specs or requires the AI to read them at the right time.
 
 ## Directory Model
 
@@ -8,6 +8,10 @@ A common single-repository structure:
 
 ```text
 .trellis/spec/
+├── context/
+│   └── CONTEXT.md
+├── adr/
+│   └── 0001-example-decision.md
 ├── backend/
 │   ├── index.md
 │   └── ...
@@ -23,6 +27,10 @@ A common monorepo structure:
 
 ```text
 .trellis/spec/
+├── context/
+│   └── CONTEXT.md
+├── adr/
+│   └── 0001-example-decision.md
 ├── cli/
 │   ├── backend/
 │   │   ├── index.md
@@ -40,6 +48,10 @@ A common monorepo structure:
 ```
 
 `index.md` is the entry point for each layer. It should list the Pre-Development Checklist and Quality Check. Specific guidelines live in other Markdown files in the same directory.
+
+`.trellis/spec/context/CONTEXT.md` is the canonical domain language and concept-boundary file. Agents must read it when work involves requirements, planning, design, implementation, review, or spec updates that depend on project terminology.
+
+`.trellis/spec/adr/` is optional and may not exist yet. Agents should still know this is where architecture decisions live and inspect it when work involves hard-to-reverse technical choices, surprising architectural structure, or meaningful trade-offs.
 
 ## Package Configuration
 
@@ -65,7 +77,7 @@ This command lists packages and spec layers for the current project. Use this ou
 
 ## How Specs Enter Tasks
 
-Before a task enters implementation, Phase 1.3 should write relevant specs into `implement.jsonl` / `check.jsonl`:
+Before a task enters implementation, planning may write relevant specs into `implement.jsonl` / `check.jsonl` when the task needs spec or research context beyond the task artifacts:
 
 ```jsonl
 {"file": ".trellis/spec/cli/backend/index.md", "reason": "CLI backend conventions"}
@@ -96,6 +108,8 @@ When the AI learns a new rule during implementation or debugging, it should upda
 | Change which specs AI reads before implementation | The task's `implement.jsonl`. |
 | Change which specs AI reads during checking | The task's `check.jsonl`. |
 | Change when specs should be updated | Phase 3.3 in `.trellis/workflow.md` and the `trellis-update-spec` skill. |
+| Change domain language or concept boundaries | `.trellis/spec/context/CONTEXT.md`. |
+| Record architecture decisions | `.trellis/spec/adr/`. |
 
 ## Boundaries
 

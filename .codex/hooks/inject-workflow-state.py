@@ -31,7 +31,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Force UTF-8 on stdin/stdout/stderr on Windows. Default codepage there is
@@ -58,45 +60,302 @@ if sys.platform.startswith("win"):
 from typing import Optional
 
 
-CODEX_SUB_AGENT_NOTICE = """<sub-agent-notice>
-SUB-AGENT NOTICE - READ FIRST IF SPAWNED VIA spawn_agent
-
-If your parent session spawned you via spawn_agent with an explicit task
-message above this hook output, that message is your only job.
-- Execute the parent message exactly as written, then return.
-- Ignore all Trellis workflow guidance below this notice.
-- Do NOT call task.py start, task.py add-context, or task.py archive.
-- Do NOT call wait_agent or spawn_agent.
-- Do NOT modify .trellis/tasks/* or any other file unless the parent message
-  explicitly asks for that.
-
-If you are the main interactive Codex session and the user is typing at the
-terminal with no parent agent, use the workflow guidance below normally.
-</sub-agent-notice>"""
-
-
-# Bootstrap notice for Codex while the session has no active task. Replaces the
-# heavyweight SessionStart context injection — instead of pushing 9.5 KB of
-# workflow text up front, we just nudge the AI to read the `trellis-start` skill once.
-# The nudge keeps showing up while status == "no_task" (cheap text, AI won't
-# re-read after the first time). Once a task is created the breadcrumb status
-# flips and this notice stops appearing automatically. Sub-agents are warded
-# off by the <sub-agent-notice> above plus the explicit exemption below.
+# Bootstrap notice for Codex while the session has no active task. Codex does not
+# get the full SessionStart overview; this short reminder points the main session
+# at the start skill once and leaves the per-turn state block compact.
 CODEX_NO_TASK_BOOTSTRAP_NOTICE = """<trellis-bootstrap>
-You are running in a Trellis-managed Codex session and there is no active task yet.
-If you have not already loaded Trellis context this session, read the `trellis-start` skill once:
-
-  $trellis-start
-
-(equivalent to reading `.agents/skills/trellis-start/SKILL.md` and following its Steps 1-3)
-
-The skill walks you through workflow.md, dev profile, git status, active tasks, and spec
-indexes. Then route the user's request per the <workflow-state> A/B/C rules below.
-
-Sub-agent exemption: if you are a sub-agent (spawned via spawn_agent with a parent task
-message), DO NOT read `$trellis-start`. Execute the parent message directly as instructed by the
-<sub-agent-notice> above.
+If you have not already loaded Trellis context this session, read the `trellis-start` skill once.
 </trellis-bootstrap>"""
+TRELLIS_VERSION_CHECK_CACHE = ".trellis/.runtime/trellis-version-check.json"
+TRELLIS_VERSION_CHECK_TTL_SECONDS = 24 * 60 * 60
+
+
+def _parse_version(value: str) -> tuple[int, int, int, str, int] | None:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.(\d+))?", value)
+    if not match:
+        return None
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+        match.group(4) or "",
+        int(match.group(5) or 0),
+    )
+
+
+def _compare_versions(left: str, right: str) -> int:
+    left_parsed = _parse_version(left)
+    right_parsed = _parse_version(right)
+    if left_parsed is None or right_parsed is None:
+        return 0
+
+    for left_part, right_part in zip(left_parsed[:3], right_parsed[:3]):
+        if left_part != right_part:
+            return 1 if left_part > right_part else -1
+
+    left_tag, right_tag = left_parsed[3], right_parsed[3]
+    if left_tag != right_tag:
+        if not left_tag:
+            return 1
+        if not right_tag:
+            return -1
+        return 1 if left_tag > right_tag else -1
+
+    if left_parsed[4] == right_parsed[4]:
+        return 0
+    return 1 if left_parsed[4] > right_parsed[4] else -1
+
+
+def _release_channel(version: str) -> str:
+    if "-beta." in version:
+        return "beta"
+    if "-rc." in version:
+        return "rc"
+    if "-alpha." in version:
+        return "alpha"
+    return "latest"
+
+
+def _run_version_command(project_dir: Path, command: list[str]) -> str:
+    env = os.environ.copy()
+    env["TRELLIS_SKIP_CLI_UPDATE_CHECK"] = "1"
+    env.setdefault("NO_COLOR", "1")
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=3,
+            cwd=str(project_dir),
+            env=env,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return "\n".join(part for part in (result.stdout, result.stderr) if part)
+
+
+def _extract_version(output: str) -> str:
+    matches = re.findall(r"\d+\.\d+\.\d+(?:-[A-Za-z]+\.\d+)?", output)
+    return matches[-1] if matches else ""
+
+
+def _read_cached_latest_version(root: Path, channel: str) -> str:
+    cache_path = root / TRELLIS_VERSION_CHECK_CACHE
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    if data.get("channel") != channel:
+        return ""
+    checked_at = data.get("checkedAt")
+    if not isinstance(checked_at, (int, float)):
+        return ""
+    if time.time() - float(checked_at) > TRELLIS_VERSION_CHECK_TTL_SECONDS:
+        return ""
+    latest = data.get("latestVersion")
+    return latest if isinstance(latest, str) else ""
+
+
+def _write_cached_latest_version(root: Path, channel: str, latest_version: str) -> None:
+    cache_path = root / TRELLIS_VERSION_CHECK_CACHE
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(
+            json.dumps(
+                {
+                    "checkedAt": time.time(),
+                    "channel": channel,
+                    "latestVersion": latest_version,
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
+def _latest_trellis_version(project_dir: Path, channel: str) -> str:
+    cached = _read_cached_latest_version(project_dir, channel)
+    if cached:
+        return cached
+    output = _run_version_command(
+        project_dir,
+        ["npm", "view", f"@qunhe/trellis@{channel}", "version", "--silent"],
+    )
+    latest = _extract_version(output)
+    _write_cached_latest_version(project_dir, channel, latest)
+    return latest
+
+
+def _build_trellis_cli_version_warning(project_dir: Path) -> str:
+    local_version = _extract_version(
+        _run_version_command(project_dir, ["trellis", "--version"])
+    )
+    if not local_version:
+        return ""
+    channel = _release_channel(local_version)
+    latest_version = _latest_trellis_version(project_dir, channel)
+    if not latest_version or _compare_versions(latest_version, local_version) <= 0:
+        return ""
+
+    install_target = channel if channel != "latest" else "latest"
+    return "\n".join(
+        [
+            "本机 Trellis CLI 落后，当前 managed skill 检测结果不完整。",
+            f"- 本机 CLI: {local_version}",
+            f"- 远端 {channel}: {latest_version}",
+            f"- 建议马上运行: `npm install -g @qunhe/trellis@{install_target}`",
+            "- 升级后立即运行: `trellis update --create-new`",
+            "除非用户明确要求跳过，否则开始实现前应优先处理。",
+        ]
+    )
+
+
+def _build_managed_skill_update_warning(project_dir: Path) -> str:
+    version_warning = _build_trellis_cli_version_warning(project_dir)
+    env = os.environ.copy()
+    env["TRELLIS_SKIP_CLI_UPDATE_CHECK"] = "1"
+    env.setdefault("NO_COLOR", "1")
+    try:
+        result = subprocess.run(
+            ["trellis", "skill-updates", "--json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=3,
+            cwd=str(project_dir),
+            env=env,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+        if not version_warning:
+            return ""
+        summary = {}
+    else:
+        if result.returncode != 0:
+            if not version_warning:
+                return ""
+            summary = {}
+        else:
+            try:
+                summary = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                if not version_warning:
+                    return ""
+                summary = {}
+
+    if not isinstance(summary, dict):
+        summary = {}
+
+    update_available = int(summary.get("updateAvailable") or 0)
+    missing = int(summary.get("missing") or 0)
+    locally_modified = int(summary.get("locallyModified") or 0)
+    if update_available == 0 and missing == 0 and locally_modified == 0 and not version_warning:
+        return ""
+
+    if version_warning:
+        return "\n".join(
+            [
+                "开始实现用户需求、创建/启动 Trellis task、或编辑代码前，必须先把下面的 Trellis CLI 更新状态告诉用户。",
+                "不要把当前本机 managed skill 检测结果当成最终结论；本机 CLI 落后时它是不完整的。",
+                "建议马上升级全局 Trellis，并用安全方式更新项目模板。",
+                "",
+                "全局 Trellis CLI 版本：",
+                *version_warning.splitlines(),
+            ]
+        )
+
+    lines = [
+        "开始实现用户需求、创建/启动 Trellis task、或编辑代码前，必须先把下面的 Trellis managed skill 状态告诉用户。",
+        "不要静默忽略这个提醒；如果用户选择继续，可以先不更新。",
+        "建议询问是否先运行 `trellis update --create-new` 检查并安全应用更新。",
+        "",
+        "当前 managed skill 检测结果：",
+        f"- 可更新: {update_available}",
+        f"- 缺失托管文件: {missing}",
+        f"- 本地已修改: {locally_modified}",
+    ]
+
+    details = summary.get("details")
+    if isinstance(details, list):
+        interesting = [
+            d for d in details
+            if isinstance(d, dict) and d.get("status") != "up_to_date"
+        ][:5]
+        if interesting:
+            lines.append("")
+            lines.append("示例：")
+            for item in interesting:
+                status = item.get("status") or "unknown"
+                item_path = item.get("path") or "(unknown path)"
+                lines.append(f"- {status}: {item_path}")
+
+    return "\n".join(lines)
+
+
+def _managed_skill_warning_session_key(input_data: dict) -> str:
+    """Return a stable conversation key so Codex prompt hooks warn once.
+
+    Codex runs this hook on every user prompt. The managed-skill warning is
+    intentionally strong, so repeating it after the user says "continue" is
+    noisy. Prefer host-provided session/conversation ids, then transcript paths.
+    If the host provides none, return an empty key and keep the old behavior.
+    """
+    for key in (
+        "session_id",
+        "sessionId",
+        "conversation_id",
+        "conversationId",
+        "conversationID",
+        "transcript_path",
+        "transcriptPath",
+        "transcript",
+    ):
+        value = input_data.get(key)
+        if isinstance(value, str) and value.strip():
+            return f"{key}:{value.strip()}"
+    return ""
+
+
+def _should_emit_managed_skill_update_warning_once(root: Path, input_data: dict) -> bool:
+    session_key = _managed_skill_warning_session_key(input_data)
+    if not session_key:
+        return True
+
+    marker_path = root / ".trellis" / ".runtime" / "managed-skill-warning-sessions.json"
+    try:
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return True
+
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+
+    warned = data.get("warned")
+    if not isinstance(warned, list):
+        warned = []
+    if session_key in warned:
+        return False
+
+    warned.append(session_key)
+    data["warned"] = warned[-50:]
+    try:
+        marker_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        return True
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +526,11 @@ def _codex_mode_banner(config: dict) -> str:
             cfg_mode = codex_cfg.get("dispatch_mode")
             if cfg_mode in ("inline", "sub-agent"):
                 mode = cfg_mode
-    return f"<codex-mode>{mode}</codex-mode>"
+    if mode == "sub-agent":
+        meaning = "sub-agent"
+    else:
+        meaning = "inline"
+    return f"<codex-mode>{meaning}</codex-mode>"
 
 
 def resolve_breadcrumb_key(
@@ -316,8 +579,6 @@ def build_breadcrumb(
     if body is None:
         body = "Refer to workflow.md for current step."
     header = f"Status: {status}" if task_id is None else f"Task: {task_id} ({status})"
-    if source:
-        header = f"{header}\nSource: {source}"
     return f"<workflow-state>\n{header}\n{body}\n</workflow-state>"
 
 
@@ -355,11 +616,20 @@ def main() -> int:
     else:
         task_id, status, source = task
         status_key = resolve_breadcrumb_key(status, platform, config)
+        source_for_breadcrumb = None if platform == "codex" else source
         breadcrumb = build_breadcrumb(
-            task_id, status, templates, source, breadcrumb_key=status_key
+            task_id, status, templates, source_for_breadcrumb, breadcrumb_key=status_key
         )
     if platform == "codex":
-        parts: list[str] = [CODEX_SUB_AGENT_NOTICE]
+        parts: list[str] = []
+        skill_update_warning = ""
+        if _should_emit_managed_skill_update_warning_once(root, data):
+            skill_update_warning = _build_managed_skill_update_warning(root)
+        if skill_update_warning:
+            parts.append(
+                f"<managed-skill-update-warning>\n{skill_update_warning}\n"
+                "</managed-skill-update-warning>"
+            )
         if task is None:
             parts.append(CODEX_NO_TASK_BOOTSTRAP_NOTICE)
         parts.append(_codex_mode_banner(config))

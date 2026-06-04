@@ -908,6 +908,149 @@ fn list_available_tools_uses_startup_snapshot_while_client_is_pending() {
     assert_eq!(tool.callable_name, "calendar_create_event");
 }
 
+#[test]
+fn tool_info_if_available_skips_unrelated_pending_client() {
+    let target_server = "ready_docs";
+    let target_tool = "search";
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager = McpConnectionManager::new_uninitialized(
+        &approval_policy,
+        &permission_profile,
+        /*prefix_mcp_tool_names*/ true,
+    );
+    manager.clients.insert(
+        target_server.to_string(),
+        AsyncManagedClient {
+            client: futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+                .boxed()
+                .shared(),
+            startup_snapshot: Some(vec![create_test_tool(target_server, target_tool)]),
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+    manager.clients.insert(
+        "slow_optional".to_string(),
+        AsyncManagedClient {
+            client: futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+                .boxed()
+                .shared(),
+            startup_snapshot: None,
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+
+    let tool = manager
+        .tool_info_if_available(target_server, target_tool)
+        .expect("target tool should be available from startup snapshot");
+
+    assert_eq!(tool.server_name, target_server);
+    assert_eq!(tool.tool.name.as_ref(), target_tool);
+}
+
+#[tokio::test]
+async fn list_available_resources_skips_pending_client_without_awaiting_startup() {
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager = McpConnectionManager::new_uninitialized(
+        &approval_policy,
+        &permission_profile,
+        /*prefix_mcp_tool_names*/ true,
+    );
+    manager.clients.insert(
+        "slow_optional".to_string(),
+        AsyncManagedClient {
+            client: futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+                .boxed()
+                .shared(),
+            startup_snapshot: None,
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+
+    let resources = tokio::time::timeout(
+        Duration::from_millis(10),
+        manager.list_available_resources(),
+    )
+    .await
+    .expect("available resource listing should not wait for pending startup");
+
+    assert!(resources.is_empty());
+}
+
+#[tokio::test]
+async fn list_available_resource_templates_skips_pending_client_without_awaiting_startup() {
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager = McpConnectionManager::new_uninitialized(
+        &approval_policy,
+        &permission_profile,
+        /*prefix_mcp_tool_names*/ true,
+    );
+    manager.clients.insert(
+        "slow_optional".to_string(),
+        AsyncManagedClient {
+            client: futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+                .boxed()
+                .shared(),
+            startup_snapshot: None,
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+
+    let templates = tokio::time::timeout(
+        Duration::from_millis(10),
+        manager.list_available_resource_templates(),
+    )
+    .await
+    .expect("available resource template listing should not wait for pending startup");
+
+    assert!(templates.is_empty());
+}
+
+#[tokio::test]
+async fn list_resources_if_ready_reports_pending_server_without_awaiting_startup() {
+    let approval_policy = Constrained::allow_any(AskForApproval::OnFailure);
+    let permission_profile = Constrained::allow_any(PermissionProfile::default());
+    let mut manager = McpConnectionManager::new_uninitialized(
+        &approval_policy,
+        &permission_profile,
+        /*prefix_mcp_tool_names*/ true,
+    );
+    manager.clients.insert(
+        "slow_optional".to_string(),
+        AsyncManagedClient {
+            client: futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()
+                .boxed()
+                .shared(),
+            startup_snapshot: None,
+            startup_complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tool_plugin_provenance: Arc::new(ToolPluginProvenance::default()),
+            cancel_token: CancellationToken::new(),
+        },
+    );
+
+    let result = tokio::time::timeout(
+        Duration::from_millis(10),
+        manager.list_resources_if_ready("slow_optional", /*params*/ None),
+    )
+    .await
+    .expect("specified-server resource listing should not wait for pending startup");
+
+    assert!(matches!(
+        result,
+        Err(McpServerReadinessError::StillStarting { server }) if server == "slow_optional"
+    ));
+}
+
 #[tokio::test]
 async fn list_all_tools_does_not_block_when_startup_snapshot_cache_hit_is_empty() {
     let pending_client = futures::future::pending::<Result<ManagedClient, StartupOutcomeError>>()

@@ -236,16 +236,16 @@ impl Session {
         clippy::await_holding_invalid_type,
         reason = "MCP resource calls are serialized through the session-owned manager guard"
     )]
-    pub async fn list_resources(
+    pub async fn list_resources_if_ready(
         &self,
         server: &str,
         params: Option<PaginatedRequestParams>,
-    ) -> anyhow::Result<ListResourcesResult> {
+    ) -> Result<ListResourcesResult, codex_mcp::McpServerReadinessError> {
         self.services
             .mcp_connection_manager
             .read()
             .await
-            .list_resources(server, params)
+            .list_resources_if_ready(server, params)
             .await
     }
 
@@ -253,16 +253,16 @@ impl Session {
         clippy::await_holding_invalid_type,
         reason = "MCP resource calls are serialized through the session-owned manager guard"
     )]
-    pub async fn list_resource_templates(
+    pub async fn list_resource_templates_if_ready(
         &self,
         server: &str,
         params: Option<PaginatedRequestParams>,
-    ) -> anyhow::Result<ListResourceTemplatesResult> {
+    ) -> Result<ListResourceTemplatesResult, codex_mcp::McpServerReadinessError> {
         self.services
             .mcp_connection_manager
             .read()
             .await
-            .list_resource_templates(server, params)
+            .list_resource_templates_if_ready(server, params)
             .await
     }
 
@@ -280,6 +280,23 @@ impl Session {
             .read()
             .await
             .read_resource(server, params)
+            .await
+    }
+
+    #[expect(
+        clippy::await_holding_invalid_type,
+        reason = "MCP resource calls are serialized through the session-owned manager guard"
+    )]
+    pub async fn read_resource_if_ready(
+        &self,
+        server: &str,
+        params: ReadResourceRequestParams,
+    ) -> Result<ReadResourceResult, codex_mcp::McpServerReadinessError> {
+        self.services
+            .mcp_connection_manager
+            .read()
+            .await
+            .read_resource_if_ready(server, params)
             .await
     }
 

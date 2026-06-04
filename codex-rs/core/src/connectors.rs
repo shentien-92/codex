@@ -305,7 +305,7 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_environment_manager(
     let mut tools = if let Some(tools) = refreshed_tools {
         tools
     } else {
-        mcp_connection_manager.list_all_tools().await
+        mcp_connection_manager.list_available_tools()
     };
     let mut should_reload_tools = false;
     let codex_apps_ready = if refreshed_tools_succeeded {
@@ -333,7 +333,7 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_environment_manager(
         false
     };
     if should_reload_tools {
-        tools = mcp_connection_manager.list_all_tools().await;
+        tools = mcp_connection_manager.list_available_tools();
     }
     if codex_apps_ready {
         cancel_token.cancel();

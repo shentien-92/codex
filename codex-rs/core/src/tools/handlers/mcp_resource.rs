@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use codex_mcp::McpServerReadinessError;
 use codex_protocol::items::McpToolCallError;
 use codex_protocol::items::McpToolCallItem;
 use codex_protocol::items::McpToolCallStatus;
@@ -281,6 +282,21 @@ where
     })?;
 
     Ok(FunctionToolOutput::from_text(content, Some(true)))
+}
+
+fn readiness_error_to_model_message(operation: &str, err: McpServerReadinessError) -> String {
+    match err {
+        McpServerReadinessError::StillStarting { server } => {
+            format!("{operation} unavailable: MCP server `{server}` is still starting")
+        }
+        McpServerReadinessError::StartupFailed { server, error } => {
+            format!("{operation} unavailable: MCP server `{server}` failed to start: {error}")
+        }
+        McpServerReadinessError::Missing { server } => {
+            format!("{operation} unavailable: unknown MCP server `{server}`")
+        }
+        McpServerReadinessError::Request(err) => format!("{operation} failed: {err:#}"),
+    }
 }
 
 fn parse_arguments(raw_args: &str) -> Result<Option<Value>, FunctionCallError> {

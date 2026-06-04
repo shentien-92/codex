@@ -6,12 +6,22 @@ import { platform } from "os"
 import { debugLog } from "./trellis-context.js"
 
 const PYTHON_CMD = platform() === "win32" ? "python" : "python3"
+const FALLBACK_PRIORITY = "--"
+const TITLE_MAX_LENGTH = 32
 
-const FIRST_REPLY_NOTICE = `<first-reply-notice>
+export const FIRST_REPLY_NOTICE = `<first-reply-notice>
 On the first visible assistant reply in this session, begin with exactly one short Chinese sentence:
 Trellis SessionStart 已注入：workflow、当前任务状态、开发者身份、git 状态、active tasks、spec 索引已加载。
 Then continue directly with the user's request. This notice is one-shot: do not repeat it after the first assistant reply in the same session.
 </first-reply-notice>`
+
+export function trellisHooksDisabled() {
+  return process.env.TRELLIS_HOOKS === "0" || process.env.TRELLIS_DISABLE_HOOKS === "1"
+}
+
+export function trellisUiTransformsDisabled() {
+  return trellisHooksDisabled() || process.env.OPENCODE_NON_INTERACTIVE === "1"
+}
 
 function hasCuratedJsonlEntry(jsonlPath) {
   try {
@@ -34,17 +44,92 @@ function hasCuratedJsonlEntry(jsonlPath) {
   return false
 }
 
-function getTaskStatus(ctx, platformInput = null) {
+function getFallbackUser() {
+  return process.env.USER || process.env.USERNAME || "unknown"
+}
+
+function getTaskUser(taskData = {}) {
+  return taskData.assignee || taskData.creator || taskData.currentUser || getFallbackUser()
+}
+
+function getTaskPriority(taskData = {}, fallback = FALLBACK_PRIORITY) {
+  return taskData.priority || fallback
+}
+
+function countOpenTaskDirectories(directory) {
+  const tasksDir = join(directory, ".trellis", "tasks")
+  let count = 0
+
+  if (!existsSync(tasksDir)) return count
+
+  try {
+    for (const name of readdirSync(tasksDir)) {
+      if (name.startsWith(".") || name === "archive") continue
+
+      const taskJsonPath = join(tasksDir, name, "task.json")
+      if (!existsSync(taskJsonPath)) continue
+
+      try {
+        const taskData = JSON.parse(readFileSync(taskJsonPath, "utf-8"))
+        if (taskData?.status === "completed" || taskData?.completedAt) continue
+      } catch {
+        // If task.json exists but cannot be parsed, still count it as a task directory.
+      }
+
+      count += 1
+    }
+  } catch {
+    return count
+  }
+
+  return count
+}
+
+function withDisplayFields(summary, taskData = {}) {
+  const { ctxDirectory, ...rest } = summary
+  return {
+    priority: getTaskPriority(taskData),
+    assignee: getTaskUser(taskData),
+    taskCount: countOpenTaskDirectories(ctxDirectory),
+    ...rest,
+  }
+}
+
+export function getStructuredTaskStatus(ctx, platformInput = null) {
   const active = ctx.getActiveTask(platformInput)
   const taskRef = active.taskPath
   if (!taskRef) {
-    return `Status: NO ACTIVE TASK\nSource: ${active.source}\nNext: Describe what you want to work on`
+    return withDisplayFields({
+      ctxDirectory: ctx.directory,
+      kind: "no_task",
+      taskRef: null,
+      taskId: null,
+      taskTitle: null,
+      status: "NO ACTIVE TASK",
+      source: active.source,
+      next: "Classify the current turn and ask for task-creation consent before creating any Trellis task",
+      missing: null,
+      stale: false,
+      ready: false,
+    })
   }
 
   const taskDir = ctx.resolveTaskDir(taskRef)
 
   if (active.stale || !taskDir || !existsSync(taskDir)) {
-    return `Status: STALE POINTER\nTask: ${taskRef}\nSource: ${active.source}\nNext: Task directory not found. Run: python3 ./.trellis/scripts/task.py finish`
+    return withDisplayFields({
+      ctxDirectory: ctx.directory,
+      kind: "stale",
+      taskRef,
+      taskId: taskRef.split("/").pop(),
+      taskTitle: taskRef,
+      status: "STALE POINTER",
+      source: active.source,
+      next: "Task directory not found. Run: python3 ./.trellis/scripts/task.py finish",
+      missing: "task directory not found",
+      stale: true,
+      ready: false,
+    })
   }
 
   let taskData = {}
@@ -59,42 +144,340 @@ function getTaskStatus(ctx, platformInput = null) {
 
   const taskTitle = taskData.title || taskRef
   const taskStatus = taskData.status || "unknown"
+  const taskId = taskData.name || taskData.id || basename(taskDir)
 
   if (taskStatus === "completed") {
-    const dirName = basename(taskDir)
-    return `Status: COMPLETED\nTask: ${taskTitle}\nSource: ${active.source}\nNext: Archive with \`python3 ./.trellis/scripts/task.py archive ${dirName}\` or start a new task`
-  }
-
-  let hasContext = false
-  for (const jsonlName of ["implement.jsonl", "check.jsonl"]) {
-    const jsonlPath = join(taskDir, jsonlName)
-    if (existsSync(jsonlPath) && hasCuratedJsonlEntry(jsonlPath)) {
-      hasContext = true
-      break
-    }
+    return withDisplayFields({
+      ctxDirectory: ctx.directory,
+      kind: "completed",
+      taskRef,
+      taskId,
+      taskTitle,
+      status: "COMPLETED",
+      source: active.source,
+      next: "Run /trellis:finish-work. If the working tree is dirty, return to Phase 3.4 first.",
+      missing: null,
+      stale: false,
+      ready: false,
+    }, taskData)
   }
 
   const hasPrd = existsSync(join(taskDir, "prd.md"))
+  const hasDesign = existsSync(join(taskDir, "design.md"))
+  const hasImplementPlan = existsSync(join(taskDir, "implement.md"))
+  const implementJsonl = join(taskDir, "implement.jsonl")
+  const checkJsonl = join(taskDir, "check.jsonl")
+  const jsonlReady =
+    (!existsSync(implementJsonl) || hasCuratedJsonlEntry(implementJsonl)) &&
+    (!existsSync(checkJsonl) || hasCuratedJsonlEntry(checkJsonl))
 
-  if (!hasPrd) {
-    return `Status: NOT READY\nTask: ${taskTitle}\nSource: ${active.source}\nMissing: prd.md not created\nNext: Write PRD (see workflow.md Phase 1.1) then curate implement.jsonl per Phase 1.3`
+  if (taskStatus === "planning" && !hasPrd) {
+    return withDisplayFields({
+      ctxDirectory: ctx.directory,
+      kind: "not_ready",
+      taskRef,
+      taskId,
+      taskTitle,
+      status: taskStatus,
+      source: active.source,
+      next: "Load trellis-brainstorm and write prd.md. Stay in planning.",
+      missing: "prd.md not created",
+      stale: false,
+      ready: false,
+    }, taskData)
   }
 
-  if (!hasContext) {
-    return `Status: NOT READY\nTask: ${taskTitle}\nSource: ${active.source}\nMissing: implement.jsonl / check.jsonl missing or empty\nNext: Curate entries per workflow.md Phase 1.3 (spec + research files only), then \`task.py start\``
+  if (taskStatus === "planning") {
+    const missingComplex = []
+    if (!hasDesign) missingComplex.push("design.md")
+    if (!hasImplementPlan) missingComplex.push("implement.md")
+    const missing = []
+    if (missingComplex.length > 0) missing.push(missingComplex.join(", "))
+    if (!jsonlReady) missing.push("implement.jsonl / check.jsonl curated entries")
+    return withDisplayFields({
+      ctxDirectory: ctx.directory,
+      kind: missing.length > 0 ? "not_ready" : "ready",
+      taskRef,
+      taskId,
+      taskTitle,
+      status: taskStatus,
+      source: active.source,
+      next: missing.length > 0
+        ? `Complete planning artifacts: ${missing.join("; ")}. Do not enter implementation until the user confirms start.`
+        : "Planning artifacts are present; ask for review before `task.py start`",
+      missing: missing.length > 0 ? missing.join("; ") : null,
+      stale: false,
+      ready: missing.length === 0,
+    }, taskData)
   }
 
-  return (
-    `Status: READY\nTask: ${taskTitle}\n` +
-    `Source: ${active.source}\n` +
-    "Next required action: dispatch `trellis-implement` per Phase 2.1. " +
-    "For agent-capable platforms, the default is to NOT edit code in the main session. " +
-    "After implementation, dispatch `trellis-check` per Phase 2.2 before reporting completion.\n" +
-    "User override (per-turn escape hatch): if the user's CURRENT message explicitly tells the " +
-    "main session to handle it directly (\"你直接改\" / \"别派 sub-agent\" / \"main session 写就行\" / " +
-    "\"do it inline\" / \"不用 sub-agent\"), honor it for this turn and edit code directly. " +
-    "Per-turn only; do NOT invent an override the user did not say."
-  )
+  return withDisplayFields({
+    ctxDirectory: ctx.directory,
+    kind: "ready",
+    taskRef,
+    taskId,
+    taskTitle,
+    status: taskStatus,
+    source: active.source,
+    next: "Follow the matching per-turn workflow-state. Implementation/check context order is jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.",
+    missing: null,
+    stale: false,
+    ready: true,
+  }, taskData)
+}
+
+function getTaskStatus(ctx, platformInput = null) {
+  const summary = getStructuredTaskStatus(ctx, platformInput)
+  if (summary.kind === "no_task") {
+    return `Status: ${summary.status}\nSource: ${summary.source}\nNext: ${summary.next}`
+  }
+  if (summary.kind === "stale") {
+    return `Status: ${summary.status}\nTask: ${summary.taskRef}\nSource: ${summary.source}\nNext: ${summary.next}`
+  }
+  if (summary.kind === "completed") {
+    return `Status: ${summary.status}\nTask: ${summary.taskTitle}\nSource: ${summary.source}\nNext: ${summary.next}`
+  }
+  if (summary.kind === "not_ready") {
+    return `Status: ${summary.status}\nTask: ${summary.taskTitle}\nSource: ${summary.source}\nMissing: ${summary.missing}\nNext: ${summary.next}`
+  }
+
+  return `Status: ${String(summary.status).toUpperCase()}\nTask: ${summary.taskTitle}\nSource: ${summary.source}\nNext: ${summary.next}`
+}
+
+function truncateStatusTitle(title) {
+  const normalized = String(title || "").replace(/\s+/g, " ").trim()
+  if (normalized.length <= TITLE_MAX_LENGTH) return normalized
+  return `${normalized.slice(0, TITLE_MAX_LENGTH - 1)}…`
+}
+
+function truncateToWidth(text, maxWidth) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim()
+  if (!Number.isFinite(maxWidth) || maxWidth <= 1 || normalized.length <= maxWidth) {
+    return normalized
+  }
+  return `${normalized.slice(0, Math.max(1, maxWidth - 1))}…`
+}
+
+export function fitTrellisStatusLine(card, maxWidth) {
+  return fitTrellisStatusParts(card, maxWidth).line
+}
+
+export function fitTrellisStatusParts(card, maxWidth) {
+  const line = String(card?.line2 || card?.detail || "")
+  const safeWidth = Number.isFinite(maxWidth) && maxWidth > 0 ? maxWidth : line.length
+  const parts = card?.parts || {}
+  const badge = parts.priority || "--"
+  const sessionPrefix = typeof parts.sessionPrefix === "string" ? parts.sessionPrefix : ""
+  const title = typeof parts.title === "string" ? parts.title : ""
+  const user = typeof parts.user === "string" ? parts.user : "unknown"
+  const taskCount = Number.isFinite(parts.taskCount) ? parts.taskCount : 0
+  const fullSuffix = ` · ${user} · ${taskCount} task(s)`
+  const compactSuffix = ` · ${user}`
+
+  if (title && line.endsWith(fullSuffix)) {
+    const prefix = `${sessionPrefix ? `${sessionPrefix} · ` : ""}[${badge}] `
+    const fullTitleWidth = safeWidth - prefix.length - fullSuffix.length
+    if (fullTitleWidth >= 2) {
+      const fittedTitle = truncateToWidth(title, fullTitleWidth)
+      return {
+        badge,
+        title: fittedTitle,
+        user,
+        taskCount,
+        showTaskCount: true,
+        line: `${prefix}${fittedTitle}${fullSuffix}`,
+      }
+    }
+
+    const compactTitleWidth = safeWidth - prefix.length - compactSuffix.length
+    if (compactTitleWidth >= 2) {
+      const fittedTitle = truncateToWidth(title, compactTitleWidth)
+      return {
+        badge,
+        title: fittedTitle,
+        user,
+        taskCount,
+        showTaskCount: false,
+        line: `${prefix}${fittedTitle}${compactSuffix}`,
+      }
+    }
+  }
+
+  const fallbackLine = truncateToWidth(line, safeWidth)
+  return {
+    badge,
+    title: fallbackLine,
+    user,
+    taskCount,
+    showTaskCount: false,
+    line: fallbackLine,
+  }
+}
+
+function getStatusCardFields(summary) {
+  const statusText = String(summary.status || summary.kind || "unknown").toLowerCase()
+  const priority = summary.priority || FALLBACK_PRIORITY
+  const rawTitle = summary.taskTitle || summary.taskId || summary.taskRef || "Trellis no active task"
+  const title = truncateStatusTitle(rawTitle)
+  const user = summary.assignee || getFallbackUser()
+  const taskCount = Number.isFinite(summary.taskCount) ? summary.taskCount : 0
+  return { statusText, priority, title, user, taskCount }
+}
+
+function getPlatformLabel(summary) {
+  const source = typeof summary?.source === "string" ? summary.source : ""
+  const contextKey = source.split(":").pop() || ""
+  const platformName = contextKey.split("_")[0] || ""
+  const labels = {
+    claude: "CC",
+    codex: "CX",
+    opencode: "OC",
+  }
+  return labels[platformName] || "--"
+}
+
+export function formatTrellisStatusCard(summary) {
+  const { statusText, priority, title, user, taskCount } = getStatusCardFields(summary)
+
+  if (summary.kind === "no_task") {
+    const line1 = "Trellis no active task"
+    const line2 = `[${priority}] ${statusText} · ${user} · ${taskCount} task(s)`
+    return {
+      title: line1,
+      detail: line2,
+      line1,
+      line2,
+      parts: {
+        priority,
+        title: line1,
+        status: statusText,
+        user,
+        taskCount,
+      },
+      tone: "muted",
+    }
+  }
+
+  if (summary.kind === "stale") {
+    const line1 = "Trellis stale task pointer"
+    const line2 = `[${priority}] ${statusText} · ${user} · ${taskCount} task(s)`
+    return {
+      title: line1,
+      detail: line2,
+      line1,
+      line2,
+      parts: {
+        priority,
+        title: line1,
+        status: statusText,
+        user,
+        taskCount,
+      },
+      tone: "warning",
+    }
+  }
+
+  const line1 = title
+  const line2 = `[${priority}] ${statusText} · ${user} · ${taskCount} task(s)`
+
+  return {
+    title: line1,
+    detail: line2,
+    line1,
+    line2,
+    parts: {
+      priority,
+      title,
+      status: statusText,
+      user,
+      taskCount,
+    },
+    tone: summary.kind === "not_ready" ? "warning" : "normal",
+  }
+}
+
+export function formatTrellisTuiStatusCard(sessionSummary, overviewSummary = null) {
+  if (sessionSummary?.kind !== "no_task") {
+    return formatTrellisStatusCard(sessionSummary)
+  }
+
+  const sessionFields = getStatusCardFields(sessionSummary || {})
+  const line1 = "no active task · OpenCode Session"
+
+  if (overviewSummary?.kind && overviewSummary.kind !== "no_task") {
+    const overviewFields = getStatusCardFields(overviewSummary)
+    const platform = getPlatformLabel(overviewSummary)
+    const line2 = `[OC:-] · [${platform}] ${overviewFields.title} · ${overviewFields.user} · ${overviewFields.taskCount} task(s)`
+    return {
+      title: line1,
+      detail: line2,
+      line1,
+      line2,
+      parts: {
+        priority: platform,
+        sessionPrefix: "[OC:-]",
+        title: overviewFields.title,
+        status: overviewFields.title,
+        user: overviewFields.user,
+        taskCount: overviewFields.taskCount,
+      },
+      tone: "muted",
+    }
+  }
+
+  const line2 = `[OC:-] no overview · ${sessionFields.user} · ${sessionFields.taskCount} task(s)`
+  return {
+    title: line1,
+    detail: line2,
+    line1,
+    line2,
+    parts: {
+      priority: "--",
+      title: "no overview",
+      status: "no overview",
+      user: sessionFields.user,
+      taskCount: sessionFields.taskCount,
+    },
+    tone: "muted",
+  }
+}
+
+export function buildCompactSessionContext(ctx, platformInput = null, options = {}) {
+  const summary = getStructuredTaskStatus(ctx, platformInput)
+  const includeFirstReplyNotice = options.includeFirstReplyNotice === true
+  const lines = [
+    "<trellis-session>",
+    "Trellis-managed project. Keep this context hidden; do not quote it to the user.",
+    ...(includeFirstReplyNotice ? [FIRST_REPLY_NOTICE] : []),
+    `Task: ${summary.taskId || summary.taskTitle || summary.taskRef || "none"}`,
+    `Status: ${summary.status}`,
+    `Source: ${summary.source}`,
+    ...(summary.missing ? [`Missing: ${summary.missing}`] : []),
+    `Next: ${summary.next}`,
+    "Workflow pointers: .trellis/workflow.md; python3 ./.trellis/scripts/get_context.py --mode phase; python3 ./.trellis/scripts/get_context.py --mode phase --step <X.X> --platform opencode",
+    "Routing rule: main session dispatches trellis-implement/check for code work unless the current user message explicitly overrides; sub-agents self-exempt and implement/check directly.",
+    "Heavy PRD/spec/research context stays in task JSONL and inject-subagent-context.js; do not load it into main chat unless needed.",
+    "</trellis-session>",
+  ]
+  return lines.join("\n")
+}
+
+export function buildCompactWorkflowBreadcrumb(ctx, platformInput = null) {
+  const summary = getStructuredTaskStatus(ctx, platformInput)
+  if (summary.kind === "no_task") {
+    return null
+  }
+
+  const lines = [
+    "<trellis-state>",
+    `Task: ${summary.taskId || summary.taskTitle || summary.taskRef}`,
+    `Status: ${summary.status}`,
+    ...(summary.missing ? [`Missing: ${summary.missing}`] : []),
+    `Next: ${summary.next}`,
+    "Rule: main session should not edit directly unless current user message explicitly overrides.",
+    "</trellis-state>",
+  ]
+  return lines.join("\n")
 }
 
 function loadTrellisConfig(directory, contextKey = null) {
@@ -201,22 +584,163 @@ function resolveSpecScope(config) {
   return null
 }
 
+function collectSpecIndexPaths(directory, allowedPkgs) {
+  const specDir = join(directory, ".trellis", "spec")
+  const paths = []
+
+  const guidesIndex = join(specDir, "guides", "index.md")
+  if (existsSync(guidesIndex)) {
+    paths.push(".trellis/spec/guides/index.md")
+  }
+
+  if (!existsSync(specDir)) return paths
+
+  try {
+    const subs = readdirSync(specDir).filter(name => {
+      if (name.startsWith(".") || name === "guides") return false
+      try {
+        return statSync(join(specDir, name)).isDirectory()
+      } catch {
+        return false
+      }
+    }).sort()
+
+    for (const sub of subs) {
+      const indexFile = join(specDir, sub, "index.md")
+      if (existsSync(indexFile)) {
+        paths.push(`.trellis/spec/${sub}/index.md`)
+      } else {
+        if (allowedPkgs !== null && !allowedPkgs.has(sub)) continue
+        try {
+          const nested = readdirSync(join(specDir, sub)).filter(name => {
+            try {
+              return statSync(join(specDir, sub, name)).isDirectory()
+            } catch {
+              return false
+            }
+          }).sort()
+          for (const layer of nested) {
+            const nestedIndex = join(specDir, sub, layer, "index.md")
+            if (existsSync(nestedIndex)) {
+              paths.push(`.trellis/spec/${sub}/${layer}/index.md`)
+            }
+          }
+        } catch {
+          // Ignore directory read errors
+        }
+      }
+    }
+  } catch {
+    // Ignore spec directory read errors
+  }
+
+  return paths
+}
+
+function readDeveloper(directory) {
+  try {
+    const content = readFileSync(join(directory, ".trellis", ".developer"), "utf-8")
+    for (const line of content.split(/\r?\n/)) {
+      if (line.startsWith("name=")) return line.slice("name=".length).trim()
+    }
+  } catch {
+    // Ignore missing developer file
+  }
+  return "(not initialized)"
+}
+
+function runGit(directory, args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: directory,
+      timeout: 3000,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim()
+  } catch {
+    return ""
+  }
+}
+
+function buildCompactCurrentState(ctx, platformInput, specIndexPaths) {
+  const directory = ctx.directory
+  const lines = []
+  lines.push(`Developer: ${readDeveloper(directory)}`)
+
+  const branch = runGit(directory, ["branch", "--show-current"]) || "(detached)"
+  const dirtyCount = runGit(directory, ["status", "--porcelain"])
+    .split(/\r?\n/)
+    .filter(line => line.trim()).length
+  lines.push(`Git: branch ${branch}; ${dirtyCount === 0 ? "clean" : `dirty ${dirtyCount} paths`}.`)
+
+  const active = ctx.getActiveTask(platformInput)
+  if (active.taskPath) {
+    const taskDir = ctx.resolveTaskDir(active.taskPath)
+    let status = "unknown"
+    if (taskDir) {
+      try {
+        const data = JSON.parse(readFileSync(join(taskDir, "task.json"), "utf-8"))
+        status = data.status || "unknown"
+      } catch {
+        // Ignore parse errors
+      }
+    }
+    lines.push(`Current task: ${active.taskPath}; status=${status}.`)
+  } else {
+    lines.push("Current task: none.")
+  }
+
+  const tasksDir = join(directory, ".trellis", "tasks")
+  if (existsSync(tasksDir)) {
+    try {
+      const activeTasks = readdirSync(tasksDir, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && entry.name !== "archive" && existsSync(join(tasksDir, entry.name, "task.json")))
+      lines.push(`Active tasks: ${activeTasks.length} total. Use \`python3 ./.trellis/scripts/task.py list --mine\` only if needed.`)
+    } catch {
+      // Ignore task list errors
+    }
+  }
+
+  const developer = readDeveloper(directory)
+  const workspaceDir = join(directory, ".trellis", "workspace", developer)
+  if (developer !== "(not initialized)" && existsSync(workspaceDir)) {
+    try {
+      const journals = readdirSync(workspaceDir)
+        .filter(name => /^journal-\d+\.md$/.test(name))
+        .sort((a, b) => Number(a.match(/\d+/)?.[0] || 0) - Number(b.match(/\d+/)?.[0] || 0))
+      const journal = journals[journals.length - 1]
+      if (journal) {
+        const journalPath = join(workspaceDir, journal)
+        const lineCount = readFileSync(journalPath, "utf-8").split(/\r?\n/).length
+        lines.push(`Journal: .trellis/workspace/${developer}/${journal}, ${lineCount} / 2000 lines.`)
+      }
+    } catch {
+      // Ignore journal errors
+    }
+  }
+
+  if (specIndexPaths.length > 0) {
+    lines.push(`Spec indexes: ${specIndexPaths.length} available.`)
+  }
+
+  return lines.join("\n")
+}
+
 export function buildSessionContext(ctx, platformInput = null) {
   const directory = ctx.directory
-  const trellisDir = join(directory, ".trellis")
   const contextKey = typeof ctx.getContextKey === "function"
     ? ctx.getContextKey(platformInput)
     : null
 
   const config = loadTrellisConfig(directory, contextKey)
   const allowedPkgs = resolveSpecScope(config)
+  const paths = collectSpecIndexPaths(directory, allowedPkgs)
 
   const parts = []
 
-  parts.push(`<trellis-context>
-You are starting a new session in a Trellis-managed project.
-Read and follow all instructions below carefully.
-</trellis-context>`)
+  parts.push(`<session-context>
+Trellis compact SessionStart context. Use it to orient the session; load details on demand.
+</session-context>`)
   parts.push(FIRST_REPLY_NOTICE)
 
   const legacyWarning = checkLegacySpec(directory, config)
@@ -224,29 +748,18 @@ Read and follow all instructions below carefully.
     parts.push(`<migration-warning>\n${legacyWarning}\n</migration-warning>`)
   }
 
-  const contextScript = join(trellisDir, "scripts", "get_context.py")
-  if (existsSync(contextScript)) {
-    const output = ctx.runScript(contextScript, undefined, contextKey)
-    if (output) {
-      parts.push("<current-state>")
-      parts.push(output)
-      parts.push("</current-state>")
-    }
-  }
+  parts.push("<current-state>")
+  parts.push(buildCompactCurrentState(ctx, platformInput, paths))
+  parts.push("</current-state>")
 
   const workflowContent = ctx.readProjectFile(".trellis/workflow.md")
   if (workflowContent) {
     const allLines = workflowContent.split("\n")
     const overviewLines = [
-      "# Development Workflow — Section Index",
-      "Full guide: .trellis/workflow.md  (read on demand)",
+      "# Development Workflow - Session Summary",
+      "Full guide: .trellis/workflow.md. Step detail: `python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>`.",
       "",
-      "## Table of Contents",
     ]
-    for (const line of allLines) {
-      if (line.startsWith("## ")) overviewLines.push(line)
-    }
-    overviewLines.push("", "---", "")
 
     let rangeStart = -1
     let rangeEnd = allLines.length
@@ -254,89 +767,36 @@ Read and follow all instructions below carefully.
       const stripped = allLines[i].trim()
       if (rangeStart === -1 && stripped === "## Phase Index") {
         rangeStart = i
-      } else if (rangeStart !== -1 && stripped === "## Workflow State Breadcrumbs") {
+      } else if (rangeStart !== -1 && stripped === "## Phase 1: Plan") {
         rangeEnd = i
         break
       }
     }
     if (rangeStart !== -1) {
-      overviewLines.push(...allLines.slice(rangeStart, rangeEnd))
+      const strippedStateBlocks = allLines
+        .slice(rangeStart, rangeEnd)
+        .join("\n")
+        .replace(/\[workflow-state:([A-Za-z0-9_-]+)\]\s*\n[\s\S]*?\n\s*\[\/workflow-state:\1\]\n?/g, "")
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/^\[(?!\/?workflow-state:)\/?[^\]\n]+\]\s*\n?/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+      overviewLines.push(strippedStateBlocks.trimEnd())
     }
 
-    parts.push("<workflow>")
+    parts.push("<trellis-workflow>")
     parts.push(overviewLines.join("\n").trimEnd())
-    parts.push("</workflow>")
+    parts.push("</trellis-workflow>")
   }
 
   parts.push("<guidelines>")
   parts.push(
-    "Project spec indexes are listed by path below. Each index contains a " +
-    "**Pre-Development Checklist** listing the specific guideline files to " +
-    "read before coding.\n\n" +
-    "- If you're spawning an implement/check sub-agent, context is injected " +
-    "automatically via `{task}/implement.jsonl` / `check.jsonl`. You do NOT " +
-    "need to read these indexes yourself.\n" +
-    "- For agent-capable platforms, do NOT edit code directly in the main " +
-    "session; dispatch `trellis-implement` and `trellis-check` so JSONL " +
-    "context is loaded by the sub-agents.\n"
+    "Task context order for implementation/check: jsonl entries -> `prd.md` -> " +
+    "`design.md if present` -> `implement.md if present`. Missing optional artifacts " +
+    "are skipped for lightweight tasks.\n"
   )
 
-  const specDir = join(directory, ".trellis", "spec")
-
-  const guidesIndex = join(specDir, "guides", "index.md")
-  if (existsSync(guidesIndex)) {
-    const content = ctx.readFile(guidesIndex)
-    if (content) {
-      parts.push(`## guides (inlined — cross-package thinking guides)\n${content}\n`)
-    }
-  }
-
-  const paths = []
-  if (existsSync(specDir)) {
-    try {
-      const subs = readdirSync(specDir).filter(name => {
-        if (name.startsWith(".")) return false
-        try {
-          return statSync(join(specDir, name)).isDirectory()
-        } catch {
-          return false
-        }
-      }).sort()
-
-      for (const sub of subs) {
-        if (sub === "guides") continue
-
-        const indexFile = join(specDir, sub, "index.md")
-        if (existsSync(indexFile)) {
-          paths.push(`.trellis/spec/${sub}/index.md`)
-        } else {
-          if (allowedPkgs !== null && !allowedPkgs.has(sub)) continue
-          try {
-            const nested = readdirSync(join(specDir, sub)).filter(name => {
-              try {
-                return statSync(join(specDir, sub, name)).isDirectory()
-              } catch {
-                return false
-              }
-            }).sort()
-            for (const layer of nested) {
-              const nestedIndex = join(specDir, sub, layer, "index.md")
-              if (existsSync(nestedIndex)) {
-                paths.push(`.trellis/spec/${sub}/${layer}/index.md`)
-              }
-            }
-          } catch {
-            // Ignore directory read errors
-          }
-        }
-      }
-    } catch {
-      // Ignore spec directory read errors
-    }
-  }
-
   if (paths.length > 0) {
-    parts.push("## Available spec indexes (read on demand)")
+    parts.push("## Available indexes (read on demand)")
     for (const p of paths) {
       parts.push(`- ${p}`)
     }
@@ -353,9 +813,7 @@ Read and follow all instructions below carefully.
   parts.push(`<task-status>\n${taskStatus}\n</task-status>`)
 
   parts.push(`<ready>
-Context loaded. Workflow index, project state, and guidelines are already injected above — do NOT re-read them.
-When the user sends the first message, follow <task-status> and the workflow guide.
-If a task is READY, execute its Next required action without asking whether to continue.
+Context loaded. Follow <task-status>. Load workflow/spec/task details only when needed.
 </ready>`)
 
   return parts.join("\n\n")
@@ -372,19 +830,6 @@ function getTrellisMetadata(metadata) {
   }
 
   return trellis
-}
-
-function markPartAsSessionStart(part) {
-  const metadata = part.metadata && typeof part.metadata === "object"
-    ? part.metadata
-    : {}
-  part.metadata = {
-    ...metadata,
-    trellis: {
-      ...getTrellisMetadata(metadata),
-      sessionStart: true,
-    },
-  }
 }
 
 function hasSessionStartMarker(part) {
@@ -425,8 +870,4 @@ export async function hasPersistedInjectedContext(client, directory, sessionID) 
     )
     return false
   }
-}
-
-export function markContextInjected(part) {
-  markPartAsSessionStart(part)
 }

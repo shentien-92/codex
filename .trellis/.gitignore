@@ -7,9 +7,6 @@
 # Session/window scoped runtime state
 .runtime/
 
-# Template update cache
-.template-hashes.json
-
 # Ralph Loop state file
 .ralph-state.json
 
@@ -20,6 +17,10 @@
 
 # Task directory runtime files
 .plan-log
+
+# Task evidence is durable review/debug context. Allow command logs even when
+# the project root ignores *.log.
+!tasks/**/*.log
 
 # Atomic update temp files
 *.tmp

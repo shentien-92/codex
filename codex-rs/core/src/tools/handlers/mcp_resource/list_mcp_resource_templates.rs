@@ -22,6 +22,7 @@ use super::emit_tool_call_end;
 use super::normalize_optional_string;
 use super::parse_args_with_default;
 use super::parse_arguments;
+use super::readiness_error_to_model_message;
 use super::serialize_function_output;
 
 pub struct ListMcpResourceTemplatesHandler;
@@ -87,11 +88,12 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourceTemplatesHandler {
                     cursor: Some(value),
                 });
                 let result = session
-                    .list_resource_templates(&server_name, params)
+                    .list_resource_templates_if_ready(&server_name, params)
                     .await
                     .map_err(|err| {
-                        FunctionCallError::RespondToModel(format!(
-                            "resources/templates/list failed: {err:#}"
+                        FunctionCallError::RespondToModel(readiness_error_to_model_message(
+                            "resources/templates/list",
+                            err,
                         ))
                     })?;
                 Ok(ListResourceTemplatesPayload::from_single_server(
@@ -110,7 +112,7 @@ impl ToolExecutor<ToolInvocation> for ListMcpResourceTemplatesHandler {
                     .mcp_connection_manager
                     .read()
                     .await
-                    .list_all_resource_templates()
+                    .list_available_resource_templates()
                     .await;
                 Ok(ListResourceTemplatesPayload::from_all_servers(templates))
             }

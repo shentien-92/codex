@@ -3,6 +3,7 @@ use codex_api::WS_REQUEST_HEADER_TRACEPARENT_CLIENT_METADATA_KEY;
 use codex_api::WS_REQUEST_HEADER_TRACESTATE_CLIENT_METADATA_KEY;
 use codex_core::ModelClient;
 use codex_core::ModelClientSession;
+use codex_core::ModelClientStreamRequestKind;
 use codex_core::Prompt;
 use codex_core::ResponseEvent;
 use codex_core::X_RESPONSESAPI_INCLUDE_TIMING_METRICS_HEADER;
@@ -608,6 +609,7 @@ async fn responses_websocket_request_prewarm_traces_logical_request() {
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &inference_trace,
         )
         .await
@@ -700,6 +702,7 @@ async fn responses_websocket_preconnect_is_reused_even_with_header_changes() {
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -751,6 +754,7 @@ async fn responses_websocket_request_prewarm_is_reused_even_with_header_changes(
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -1154,6 +1158,7 @@ async fn responses_websocket_emits_reasoning_included_event() {
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -1228,6 +1233,7 @@ async fn responses_websocket_emits_rate_limit_events() {
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -1883,6 +1889,7 @@ async fn responses_websocket_v2_after_error_uses_full_create_without_previous_re
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -1971,6 +1978,7 @@ async fn responses_websocket_v2_surfaces_terminal_error_without_close_handshake(
             harness.summary,
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -2237,6 +2245,7 @@ async fn stream_until_complete_with_request_metadata(
             harness.summary,
             service_tier.map(|service_tier| service_tier.request_value().to_string()),
             turn_metadata_header,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await

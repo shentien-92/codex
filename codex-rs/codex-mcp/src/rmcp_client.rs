@@ -227,6 +227,10 @@ impl AsyncManagedClient {
         self.client.clone().await
     }
 
+    pub(crate) fn client_if_available(&self) -> Option<Result<ManagedClient, StartupOutcomeError>> {
+        self.client.clone().now_or_never()
+    }
+
     pub(crate) async fn shutdown(&self) {
         self.cancel_token.cancel();
         match self.client().await {

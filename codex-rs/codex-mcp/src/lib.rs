@@ -1,4 +1,5 @@
 pub use connection_manager::McpConnectionManager;
+pub use connection_manager::McpServerReadinessError;
 pub use elicitation::ElicitationReviewRequest;
 pub use elicitation::ElicitationReviewer;
 pub use elicitation::ElicitationReviewerHandle;

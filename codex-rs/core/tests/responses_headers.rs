@@ -2,6 +2,7 @@ use std::process::Command;
 use std::sync::Arc;
 
 use codex_core::ModelClient;
+use codex_core::ModelClientStreamRequestKind;
 use codex_core::Prompt;
 use codex_core::ResponseEvent;
 use codex_login::CodexAuth;
@@ -132,6 +133,7 @@ async fn responses_stream_includes_subagent_header_on_review() {
             summary.unwrap_or(model_info.default_reasoning_summary),
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -260,6 +262,7 @@ async fn responses_stream_includes_subagent_header_on_other() {
             summary.unwrap_or(model_info.default_reasoning_summary),
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await
@@ -377,6 +380,7 @@ async fn responses_respects_model_info_overrides_from_config() {
             summary.unwrap_or(model_info.default_reasoning_summary),
             /*service_tier*/ None,
             /*turn_metadata_header*/ None,
+            ModelClientStreamRequestKind::Sampling,
             &codex_rollout_trace::InferenceTraceContext::disabled(),
         )
         .await

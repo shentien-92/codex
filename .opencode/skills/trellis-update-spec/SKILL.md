@@ -61,6 +61,9 @@ For triggered tasks, include all sections below:
 
 ```
 .trellis/spec/
+├── context/
+│   └── CONTEXT.md     # Domain language and concept boundaries
+├── adr/               # Optional architecture decision records
 ├── <layer>/           # Per-layer coding standards (e.g., backend/, frontend/, api/)
 │   ├── index.md       # Overview and links
 │   └── *.md           # Topic-specific guidelines
@@ -89,6 +92,12 @@ For triggered tasks, include all sections below:
 | "Remember to check X when doing Y" | ❌ Spec file (too abstract for a spec) | ✅ `guides/` (thinking checklist) |
 
 **Guides should be short checklists that point to specs**, not duplicate the detailed rules.
+
+### Domain Context and ADRs
+
+`.trellis/spec/context/CONTEXT.md` is the canonical domain glossary and boundary document. Read it before changing or adding terminology, requirements language, or project concepts. Keep it free of implementation details; those belong in code-specs or task artifacts.
+
+`.trellis/spec/adr/` is optional. Know it exists and inspect it when a task involves hard-to-reverse technical decisions, surprising architectural choices, or meaningful trade-offs.
 
 ---
 

@@ -110,6 +110,21 @@ fn parse_arguments_handles_empty_and_json() {
 }
 
 #[test]
+fn readiness_error_message_reports_still_starting_server() {
+    let message = readiness_error_to_model_message(
+        "resources/list",
+        codex_mcp::McpServerReadinessError::StillStarting {
+            server: "slow_optional".to_string(),
+        },
+    );
+
+    assert_eq!(
+        message,
+        "resources/list unavailable: MCP server `slow_optional` is still starting"
+    );
+}
+
+#[test]
 fn template_with_server_serializes_server_field() {
     let entry = ResourceTemplateWithServer::new("srv".to_string(), template("memo://{id}", "memo"));
     let value = serde_json::to_value(&entry).expect("serialize template");

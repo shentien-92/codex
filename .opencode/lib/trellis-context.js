@@ -5,7 +5,7 @@
  * JSONL parsing, and context building capabilities.
  */
 
-import { existsSync, readFileSync, appendFileSync, readdirSync } from "fs"
+import { existsSync, readFileSync, appendFileSync, readdirSync, statSync } from "fs"
 import { isAbsolute, join } from "path"
 import { platform } from "os"
 import { execSync } from "child_process"
@@ -13,7 +13,6 @@ import { createHash } from "crypto"
 import process from "process"
 
 const PYTHON_CMD = platform() === "win32" ? "python" : "python3"
-// Debug logging
 const DEBUG_LOG = "/tmp/trellis-plugin-debug.log"
 
 function debugLog(prefix, ...args) {
@@ -55,6 +54,10 @@ function lookupString(data, keys) {
   return null
 }
 
+function booleanFlag(value) {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
 function buildContextKey(platformName, kind, value) {
   if (kind === "transcript") {
     return `${platformName}_transcript_${hashValue(value)}`
@@ -63,38 +66,25 @@ function buildContextKey(platformName, kind, value) {
   return safeValue ? `${platformName}_${safeValue}` : `${platformName}_${hashValue(value)}`
 }
 
-// Matches `trellis-implement`, `trellis-check`, `trellis-research` exactly.
-// Used by chat.message plugins to skip injection inside Trellis sub-agent turns.
 const TRELLIS_SUBAGENT_RE = /^trellis-(implement|check|research)$/
 
-/**
- * Return true when the OpenCode `chat.message` input represents a Trellis
- * sub-agent turn. `input.agent` is set by OpenCode when a Task tool spawns a
- * child session with a custom agent (see `packages/opencode/src/tool/task.ts`).
- */
 export function isTrellisSubagent(input) {
   if (!input || typeof input !== "object") return false
   const agent = typeof input.agent === "string" ? input.agent.trim() : ""
   return TRELLIS_SUBAGENT_RE.test(agent)
 }
 
-/**
- * Trellis Context Manager
- */
 export class TrellisContext {
   constructor(directory) {
     this.directory = directory
     debugLog("context", "TrellisContext initialized", { directory })
   }
 
-  // ============================================================
-  // Trellis Project Detection
-  // ============================================================
-
   isTrellisProject() {
     return existsSync(join(this.directory, ".trellis"))
   }
 
+  /** @param {Record<string, unknown> | null} platformInput */
   getContextKey(platformInput = null) {
     const override = stringValue(process.env.TRELLIS_CONTEXT_ID)
     if (override) {
@@ -107,16 +97,93 @@ export class TrellisContext {
     const input = platformInput && typeof platformInput === "object" ? platformInput : null
     if (!input) return null
 
+    const directContextKey = lookupString(input, ["contextKey", "context_key", "trellisContextKey", "TRELLIS_CONTEXT_ID"])
+    if (directContextKey) {
+      const safeKey = sanitizeKey(directContextKey)
+      if (safeKey && this.readContext(safeKey)) return safeKey
+    }
+
     const sessionID = lookupString(input, ["session_id", "sessionId", "sessionID"])
-    if (sessionID) return buildContextKey("opencode", "session", sessionID)
+    if (sessionID) {
+      const directKey = sanitizeKey(sessionID)
+      if (directKey && directKey.startsWith("opencode_") && this.readContext(directKey)) return directKey
+
+      const key = buildContextKey("opencode", "session", sessionID)
+      if (this.readContext(key)) return key
+    }
 
     const conversationID = lookupString(input, ["conversation_id", "conversationId", "conversationID"])
-    if (conversationID) return buildContextKey("opencode", "conversation", conversationID)
+    if (conversationID) {
+      const key = buildContextKey("opencode", "conversation", conversationID)
+      if (this.readContext(key)) return key
+    }
 
     const transcriptPath = lookupString(input, ["transcript_path", "transcriptPath", "transcript"])
-    if (transcriptPath) return buildContextKey("opencode", "transcript", transcriptPath)
+    if (transcriptPath) {
+      const key = buildContextKey("opencode", "transcript", transcriptPath)
+      if (this.readContext(key)) return key
+    }
 
     return null
+  }
+
+  shouldUseLatestSessionFallback(platformInput = null) {
+    const input = platformInput && typeof platformInput === "object" ? platformInput : null
+    if (!input) return false
+    const platformName = this.getPlatformName(input)
+    return platformName === "opencode" && booleanFlag(input._trellis_latest_session_fallback)
+  }
+
+  getPlatformName(platformInput = null) {
+    const input = platformInput && typeof platformInput === "object" ? platformInput : null
+    const explicit = lookupString(input, ["_trellis_platform", "trellis_platform", "platform"])
+    return explicit || null
+  }
+
+  readLatestRuntimeSession(platformInput = null) {
+    const sessionsDir = join(this.directory, ".trellis", ".runtime", "sessions")
+    if (!existsSync(sessionsDir)) return null
+
+    const platformName = this.getPlatformName(platformInput)
+    const candidates = []
+
+    try {
+      for (const name of readdirSync(sessionsDir)) {
+        if (!name.endsWith(".json")) continue
+
+        const contextKey = name.slice(0, -".json".length)
+        const context = this.readContext(contextKey)
+        if (!context || typeof context !== "object") continue
+
+        const taskRef = this.normalizeTaskRef(context.current_task || "")
+        if (!taskRef) continue
+
+        const contextPlatform = typeof context.platform === "string" ? context.platform : contextKey.split("_", 1)[0]
+        let statMtime = 0
+        try {
+          statMtime = statSync(join(sessionsDir, name)).mtimeMs
+        } catch {
+          // Ignore stat errors; last_seen_at may still be available.
+        }
+
+        const lastSeenAt = Date.parse(context.last_seen_at || "") || 0
+        candidates.push({
+          contextKey,
+          taskRef,
+          platform: contextPlatform,
+          timestamp: Math.max(lastSeenAt, statMtime),
+        })
+      }
+    } catch {
+      return null
+    }
+
+    const matchingPlatform = platformName
+      ? candidates.filter(candidate => candidate.platform === platformName || candidate.contextKey.startsWith(`${platformName}_`))
+      : []
+    const pool = matchingPlatform.length > 0 ? matchingPlatform : candidates
+    pool.sort((a, b) => b.timestamp - a.timestamp || a.contextKey.localeCompare(b.contextKey))
+    return pool[0] || null
   }
 
   readContext(contextKey) {
@@ -129,15 +196,7 @@ export class TrellisContext {
     }
   }
 
-  /**
-   * Get active task from session runtime context.
-   *
-   * Resolution order (mirrors Python `active_task.resolve_active_task`):
-   *   1. Lookup the runtime file for the input-derived context key.
-   *   2. If that misses and exactly one session runtime file exists locally,
-   *      use it (`_resolveSingleSessionFallback`). Refuses to guess when 0 or
-   *      ≥2 files exist so multi-window isolation holds.
-   */
+  /** @param {Record<string, unknown> | null} platformInput */
   getActiveTask(platformInput = null) {
     const contextKey = this.getContextKey(platformInput)
     if (contextKey) {
@@ -153,19 +212,21 @@ export class TrellisContext {
       }
     }
 
-    const fallback = this._resolveSingleSessionFallback()
-    if (fallback) {
-      return fallback
+    if (this.shouldUseLatestSessionFallback(platformInput)) {
+      const latest = this.readLatestRuntimeSession(platformInput)
+      if (latest) {
+        const taskDir = this.resolveTaskDir(latest.taskRef)
+        return {
+          taskPath: latest.taskRef,
+          source: `session-latest:${latest.contextKey}`,
+          stale: !taskDir || !existsSync(taskDir),
+        }
+      }
     }
 
     return { taskPath: null, source: "none", stale: false }
   }
 
-  /**
-   * Mirror of Python `_resolve_single_session_fallback`. Returns the task
-   * pointed at by the sole session runtime file when exactly one exists,
-   * else null.
-   */
   _resolveSingleSessionFallback() {
     const sessionsDir = join(this.directory, ".trellis", ".runtime", "sessions")
     if (!existsSync(sessionsDir)) return null
@@ -180,18 +241,12 @@ export class TrellisContext {
     }
     if (files.length !== 1) return null
 
-    const sessionFile = join(sessionsDir, files[0])
-    let context
-    try {
-      context = JSON.parse(readFileSync(sessionFile, "utf-8"))
-    } catch {
-      return null
-    }
+    const fallbackKey = files[0].replace(/\.json$/, "")
+    const context = this.readContext(fallbackKey)
     const taskRef = this.normalizeTaskRef(context?.current_task || "")
     if (!taskRef) return null
 
     const taskDir = this.resolveTaskDir(taskRef)
-    const fallbackKey = files[0].replace(/\.json$/, "")
     return {
       taskPath: taskRef,
       source: `session-fallback:${fallbackKey}`,
@@ -241,10 +296,6 @@ export class TrellisContext {
     return join(this.directory, ".trellis", "tasks", normalized)
   }
 
-  // ============================================================
-  // File Reading Utilities
-  // ============================================================
-
   readFile(filePath) {
     try {
       if (existsSync(filePath)) {
@@ -278,10 +329,6 @@ export class TrellisContext {
     }
   }
 
-  // ============================================================
-  // JSONL Reading
-  // ============================================================
-
   readDirectoryMdFiles(dirPath, maxFiles = 20) {
     const results = []
     const fullPath = join(this.directory, dirPath)
@@ -310,12 +357,6 @@ export class TrellisContext {
     return results
   }
 
-  /**
-   * Read a JSONL file and load referenced files/directories
-   * Supports:
-   *   {"file": "path/to/file.md", "reason": "..."}
-   *   {"file": "path/to/dir/", "type": "directory", "reason": "..."}
-   */
   readJsonlWithFiles(jsonlPath) {
     const results = []
     const content = this.readFile(jsonlPath)
@@ -352,10 +393,6 @@ export class TrellisContext {
   }
 }
 
-// ============================================================
-// Context Collector (for session deduplication)
-// ============================================================
-
 class ContextCollector {
   constructor() {
     this.processed = new Set()
@@ -374,8 +411,5 @@ class ContextCollector {
   }
 }
 
-// Singleton instance
 export const contextCollector = new ContextCollector()
-
-// Export debug log for plugins
 export { debugLog }

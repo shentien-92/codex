@@ -22,6 +22,7 @@ use super::emit_tool_call_end;
 use super::normalize_required_string;
 use super::parse_args;
 use super::parse_arguments;
+use super::readiness_error_to_model_message;
 use super::serialize_function_output;
 
 pub struct ReadMcpResourceHandler;
@@ -78,7 +79,7 @@ impl ToolExecutor<ToolInvocation> for ReadMcpResourceHandler {
 
         let payload_result: Result<ReadResourcePayload, FunctionCallError> = async {
             let result = session
-                .read_resource(
+                .read_resource_if_ready(
                     &server,
                     ReadResourceRequestParams {
                         meta: None,
@@ -87,7 +88,10 @@ impl ToolExecutor<ToolInvocation> for ReadMcpResourceHandler {
                 )
                 .await
                 .map_err(|err| {
-                    FunctionCallError::RespondToModel(format!("resources/read failed: {err:#}"))
+                    FunctionCallError::RespondToModel(readiness_error_to_model_message(
+                        "resources/read",
+                        err,
+                    ))
                 })?;
 
             Ok(ReadResourcePayload {

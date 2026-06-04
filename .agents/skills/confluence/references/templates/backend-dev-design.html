@@ -1,0 +1,516 @@
+<p>
+   <strong>
+      <ac:structured-macro ac:name="toc" ac:schema-version="1" ac:macro-id="720be86e-9fc2-49a4-837f-2e55003dba78" />
+   </strong>
+</p>
+<table class="fixed-table">
+   <colgroup>
+      <col style="width: 103.0px;" />
+      <col style="width: 544.0px;" />
+   </colgroup>
+   <tbody>
+      <tr>
+         <th style="text-align: left;"><strong>User Story</strong></th>
+         <td style="text-align: left;"><span style="color: rgb(165,173,186);"><em>请在这里关联当前设计所属的User Story Issue（kaptain）</em></span></td>
+      </tr>
+   </tbody>
+</table>
+<h1>1. 概要</h1>
+<p><span style="color: rgb(122,134,154);"><em>这部分除了提供需求背景外，最重要的是<strong>定义问题</strong>，需要写明白：</em></span></p>
+<ul>
+   <li><span style="color: rgb(122,134,154);"><em>本次需求的背景、价值简述。</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>本次工作所对应的技术实现范围，<strong>做什么，不做什么。</strong></em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>如果有名词解释，请加上描述。</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>这个需求主要的<strong>设计难点</strong>在哪里。</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>系统的预期&nbsp;<strong>稳定性目标（是否允许宕机、降级，恢复时间等）</strong>、<strong>性能目标</strong>（比如接口响应时间、QPS、并发数量等）、<strong>数据规模</strong> 是什么。</em></span></li>
+</ul>
+<p><span style="color: rgb(122,134,154);"><em>在一开始就需要提供系统的设计目标，为后续的设计方案做指导。</em></span></p>
+<h1>2. 架构说明</h1>
+<p><em><span style="color: rgb(122,134,154);">这部分主要是通过一个整体架构图，说明整体系统设计。架构图的范例：</span><a href="https://cf.qunhequnhe.com/pages/viewpage.action?pageId=80620256310">模型公库全量翻译</a>、<a href="https://cf.qunhequnhe.com/pages/viewpage.action?pageId=80615894628">订阅方案接入paypal支付</a>。</em></p>
+<h2><span style="color: rgb(0,0,0);"><span class="content mubu-node">2.1 顶层设计与外</span></span><span class="content mubu-node">部依<span style="color: rgb(0,0,0);">赖</span></span></h2>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         <span class="content mubu-node">
+            阐述设计原则和依据，技术栈选型，基础设施等外部资源依赖。可参考：
+            <span style="color: rgb(0,0,0);">
+               <ac:link>
+                  <ri:page ri:space-key="WEBJGW" ri:content-title="1. 后端顶层设计" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[顶层设计]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+               、
+               <ac:link>
+                  <ri:page ri:space-key="WEBJGW" ri:content-title="3. 微服务设计" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[微服务设计]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+            </span>
+         </span>
+      </em>
+   </span>
+</p>
+<h1>3. 详细设计</h1>
+<p><span style="color: rgb(122,134,154);"><em>请在这里撰写技术设计的详细细节，你可以借助UML类图、调用链时序图等工具，来阐述核心模块设计、<span class="content mubu-node">重要数据结构、各方案优缺点等</span>。</em></span></p>
+<p><span style="color: rgb(122,134,154);"><em>按如下模块设计，也可以新增模块。</em></span></p>
+<h2>3.1 流程设计</h2>
+<p><span style="color: rgb(122,134,154);"><em>如果有流程设计具体逻辑，请借助<span class="content mubu-node">流程图/时序图等方式</span>来展示整个流程图</em><em><span class="content mubu-node">，完整阐述设计的核心模块关系。</span></em></span></p>
+<p><span style="color: rgb(122,134,154);"><em><span class="content mubu-node">对于复杂的设计，可以提供多种关系图，确保设计传达的完备性。</span></em></span></p>
+<h2>3.2 接口设计</h2>
+<p>
+   <span style="color: rgb(165,173,186);"><em><span style="color: rgb(122,134,154);">如果技术设计包含新的API和接口，请在这里说明API和接口的细节，如果是API则同步到</span> <a href="https://doc.qunhequnhe.com/group/378">https://doc.qunhequnhe.com</a></em></span>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         <span style="color: rgb(165,173,186);">
+            。参考：
+            <span style="color: rgb(0,0,0);">
+               <ac:link>
+                  <ri:page ri:space-key="WEBJGW" ri:content-title="14. 接口设计" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[接口设计]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+               。
+            </span>
+         </span>
+      </em>
+   </span>
+</p>
+<h2>3.3 数据结构设计</h2>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         如果技术设计包括数据结构的定义，请在这里说明具体改动细节，可以用<span class="content mubu-node">UML类图</span>。设计规范参考
+         <ac:link>
+            <ri:page ri:space-key="CUSTBE" ri:content-title="Data层、Model层、DB层数据结构的职责规范" />
+         </ac:link>
+         。
+      </em>
+   </span>
+</p>
+<h2>3.4 存储设计</h2>
+<p><span style="color: rgb(122,134,154);"><em>如果技术设计包含数据库方面的改动（Mysql、Redis、MongoDB等等）或缓存方便的改动（Reids等），请在这里说明具体的改动细节。</em></span></p>
+<ul>
+   <li><span style="color: rgb(165,173,186);"><em><span style="color: rgb(122,134,154);">如&ldquo;改动+新增&rdquo;的SQL表超过3张时，你可以考虑</span><a href="https://cf.qunhequnhe.com/pages/viewpage.action?pageId=34309446" style="text-decoration: none;">绘制一张ER图</a><span style="color: rgb(122,134,154);">用于清晰的表达你的思路。</span></em></span></li>
+   <li><span style="color: rgb(165,173,186);"><span style="color: rgb(122,134,154);"><em>不同环境的redis缓存数据会相互影响时，需要区分不同环境的缓存key值。</em></span></span></li>
+   <li><span style="color: rgb(165,173,186);"><span style="color: rgb(122,134,154);"><em>数据库存储的字段范围不能低于代码中的字段范围，比如代码里是long类型，对应存储字段不能是int而是bigint。</em></span></span></li>
+</ul>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         （参考：
+         <ac:link>
+            <ri:page ri:space-key="WEBJGW" ri:content-title="4. 数据库设计 &mdash; MySQL" />
+            <ac:plain-text-link-body>
+               <![CDATA[MySQL]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         <span style="color: rgb(0,0,0);">
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="5. 缓存设计 &mdash; Redis" />
+               <ac:plain-text-link-body>
+                  <![CDATA[Redis]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="6. 数据库设计 &mdash; HBase" />
+               <ac:plain-text-link-body>
+                  <![CDATA[HBase]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="7. 搜索设计 &mdash; Elasticsearch" />
+               <ac:plain-text-link-body>
+                  <![CDATA[Elasticsearch]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="8. 存储设计 &mdash; COS" />
+               <ac:plain-text-link-body>
+                  <![CDATA[COS]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="17. 存储设计 &mdash; 内存缓存" />
+               <ac:plain-text-link-body>
+                  <![CDATA[内存缓存]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            ）
+         </span>
+      </em>
+   </span>
+</p>
+<h1>4. 稳定性相关</h1>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         请在这里撰写稳定性相关的详细细节，你可以依赖分析、关键链路校验来思考。参考：
+         <span style="color: rgb(0,0,0);">
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="9. 变更三要素 &mdash; 可灰度" />
+               <ac:plain-text-link-body>
+                  <![CDATA[可灰度]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="10. 变更三要素 &mdash; 可回滚" />
+               <ac:plain-text-link-body>
+                  <![CDATA[可回滚]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="11. 变更三要素 &mdash; 可监控" />
+               <ac:plain-text-link-body>
+                  <![CDATA[可监控]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            。
+         </span>
+      </em>
+   </span>
+</p>
+<h2>4.1 错误处理方式</h2>
+<p><span style="color: rgb(122,134,154);"><em>依据此前设定的稳定性目标，设计系统错误的处理方式，比如：</em></span></p>
+<ul>
+   <li><span style="color: rgb(122,134,154);"><em>哪些错误是应自动恢复的？自动恢复/重试的方式，数据一致性？如何记录这些错误？</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>哪些错误需要手动恢复的？如何通过监控报警发现？恢复的手段，开关、回滚、降级方式？</em></span></li>
+   <li>
+      <p><span style="color: rgb(0,0,255);"><em><span style="color: rgb(122,134,154);">请说明是否有新增依赖（二方包/三方包/存储组件/中间件/新应用/已依赖应用的新接口/开关/配置），并分析是强/弱依赖，强依赖须同步提供方，弱依赖请做好降级预案。</span></em></span></p>
+   </li>
+</ul>
+<h2>4.2 安全风险因素</h2>
+<ul>
+   <li><span style="color: rgb(122,134,154);"><em>是否存在资损风险？有无内外部付费服务的使用，使用量有无超标风险？资金使用和结算方式有无风险？</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>是否存在数据损失风险？比如暴露数据接口给外部，造成数据泄露、删除？</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>对外接口是否存在限流、反机器人/爬虫、反DoS攻击措施？</em></span></li>
+</ul>
+<p>
+   <span style="color: rgb(122,134,154);"><em>（参考：</em></span>
+   <em>
+      <span style="color: rgb(165,173,186);">
+         <ac:link>
+            <ri:page ri:space-key="WEBJGW" ri:content-title="7. 安全分析" />
+            <ac:plain-text-link-body>
+               <![CDATA[安全分析]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         、
+         <ac:link>
+            <ri:page ri:space-key="robustness" ri:content-title="酷家乐资损定义v0.1" />
+            <ac:plain-text-link-body>
+               <![CDATA[酷家乐资损定义]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         、<span style="color: rgb(122,134,154);">可参考各自业务线的</span>
+         <ac:link>
+            <ri:page ri:space-key="robustness" ri:content-title="资损故障等级定义梳理（初稿）" />
+            <ac:plain-text-link-body>
+               <![CDATA[资损故障等级定义梳理]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         ）
+      </span>
+   </em>
+</p>
+<h2>4.3 性能相关因素</h2>
+<p><span style="color: rgb(122,134,154);"><em>依据此前设定的性能目标、预估的数据规模，说明性能保障和优化措施，比如：</em></span></p>
+<ul>
+   <li><span style="color: rgb(122,134,154);"><em>接口响应时间/QPS/并发数量 等目标如何保证达成，必要情况下如何扩容和优化？</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>数据规模超出预期时如何扩容和优化？上线前，阐述包含哪些方面的相关变更，如何渐进地、兼容地发布变更</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>性能和数据指标如何监控、报警？</em></span></li>
+</ul>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         （参考：
+         <span style="color: rgb(165,173,186);">
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="6. 性能分析" />
+               <ac:plain-text-link-body>
+                  <![CDATA[性能分析]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+         </span>
+         ）
+      </em>
+   </span>
+</p>
+<h2>4.4 系统指标设计</h2>
+<p><span style="color: rgb(122,134,154);"><em>综合业务需求和系统设计目标，综合上述错误处理、安全风险处理、性能因素处理的目标和考量，设计和汇总系统的指标，包括：</em></span></p>
+<ul>
+   <li><span style="color: rgb(122,134,154);"><em>业务相关核心指标</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>系统相关核心指标</em></span></li>
+   <li>
+      <span style="color: rgb(122,134,154);">
+         <em>
+            监控报警项 (
+            <span style="color: rgb(0,0,0);">
+               <ac:link>
+                  <ri:page ri:space-key="WEBJGW" ri:content-title="11. 变更三要素 &mdash; 可监控" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[可监控]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+               、
+               <ac:link>
+                  <ri:page ri:space-key="WEBJGW" ri:content-title="15. 数据埋点" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[数据埋点]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+            </span>
+            )
+         </em>
+      </span>
+   </li>
+   <li><span style="color: rgb(122,134,154);"><em>业务日志/埋点</em></span><span style="color: rgb(122,134,154);"><em>的设计</em></span></li>
+</ul>
+<h2>4.5 功能开关设计</h2>
+<p><span style="color: rgb(122,134,154);"><em>说明下开关创建背景说明、开关控制逻辑说明、开关预期下架时间&lsquo;，以及</em></span><span style="color: rgb(122,134,154);"><em>开关特征评估的风险：存在资损/阻塞核心链路等高风险；仅用作控制发布解耦、代码风险控制的低风险开关。</em></span></p>
+<p><span style="color: rgb(122,134,154);"><em>（参考：<a href="https://cf.qunhequnhe.com/pages/viewpage.action?pageId=81025678083">功能开关管理规范</a>、<a href="https://cf.qunhequnhe.com/pages/viewpage.action?pageId=81025681761">功能开关操作指导书</a>）</em></span></p>
+<h2>4.6 本地化设计</h2>
+<p><span style="color: rgb(122,134,154);"><em>需要考虑下对国际化产品本地化的影响，包括是否支持内容分站隔离，是否需要分站兜底逻辑等</em></span></p>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         （参考：
+         <ac:link>
+            <ri:page ri:space-key="I18N" ri:content-title="Coohom 网站工具本地化（国家分站）建设技术侧汇总篇" />
+            <ac:plain-text-link-body>
+               <![CDATA[Coohom 网站工具本地化（国家分站）建设技术侧汇总篇]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         ）
+      </em>
+   </span>
+</p>
+<h1>5. 其它风险</h1>
+<ul>
+   <li><span style="color: rgb(165,173,186);"><em><span style="color: rgb(122,134,154);">上线前，阐述包含哪些方面的相关变更，如何渐进地、兼容地发布变更。</span></em></span></li>
+   <li><span style="color: rgb(165,173,186);"><em><span style="color: rgb(122,134,154);">上线中，阐述如果出现故障如何应对，回滚 or 解决 or 忽略。</span></em></span></li>
+   <li><span style="color: rgb(165,173,186);"><em><span style="color: rgb(122,134,154);">上线后，阐述如何持续关注线上表现，异常表征如何发现和应对。</span></em></span></li>
+</ul>
+<p>
+   <span style="color: rgb(165,173,186);">
+      <em>
+         <span style="color: rgb(122,134,154);">
+            （参考：
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="5. 变更三要素" />
+               <ac:plain-text-link-body>
+                  <![CDATA[变更三要素]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、
+            <ac:link>
+               <ri:page ri:space-key="WEBJGW" ri:content-title="9. 影响面分析" />
+               <ac:plain-text-link-body>
+                  <![CDATA[影响面分析]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            ）
+         </span>
+      </em>
+   </span>
+</p>
+<h2><span style="color: rgb(0,0,0);">5.1 灰发/回滚预案</span></h2>
+<p><span style="color: rgb(0,0,255);"><em><span style="color: rgb(51,51,51);"><strong>【必填】</strong><span style="color: rgb(122,134,154);">请说明模块的灰发节奏、回滚预案。</span></span></em></span></p>
+<h2>5.2 回归测试</h2>
+<p>
+   <span style="color: rgb(165,173,186);">
+      <em>
+         <span style="color: rgb(122,134,154);">
+            请在这里对技术设计会带来的业务影响范围进行评估，包括涉及上下游业务、
+            <ac:link>
+               <ri:page ri:space-key="I18N" ri:content-title="Devdesign--国际化分析" />
+               <ac:plain-text-link-body>
+                  <![CDATA[国际化场景（]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            <ac:link>
+               <ri:page ri:space-key="I18N" ri:content-title="coohom多语言规范【V1.1 试行版】" />
+               <ac:plain-text-link-body>
+                  <![CDATA[coohom多语言规范]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            <ac:link>
+               <ri:page ri:space-key="I18N" ri:content-title="Devdesign--国际化分析" />
+               <ac:plain-text-link-body>
+                  <![CDATA[）]]>
+               </ac:plain-text-link-body>
+            </ac:link>
+            、边缘场景等，以便测试覆盖回归或通知相关方进行回归。
+         </span>
+      </em>
+   </span>
+</p>
+<h2>5.3 数据迁移</h2>
+<p><span style="color: rgb(165,173,186);"><em><span style="color: rgb(122,134,154);">请说明是否有数据迁移，如果涉及请思考如何保证数据一致性。</span></em></span></p>
+<h2>5.4 变更评估</h2>
+<p><span style="color: rgb(51,51,51);"><strong><em>【必填】是否涉及如下相关操作，请确认两点：</em></strong></span></p>
+<ac:task-list>
+   <ac:task>
+      <ac:task-id>1326</ac:task-id>
+      <ac:task-status>incomplete</ac:task-status>
+      <ac:task-body><span style="color: rgb(51,51,51);"><strong><em>本Dev Design涉及内容无线上批量（超过10条）数据变更或业务资产数据变更</em></strong></span></ac:task-body>
+   </ac:task>
+</ac:task-list>
+<p>
+   <span style="color: rgb(165,173,186);">
+      <em>
+         &nbsp; &nbsp; <span style="color: rgb(122,134,154);">如果有线上数据批量变更或业务资产数据变更</span>（
+         <ac:link>
+            <ri:page ri:space-key="robustness" ri:content-title="酷家乐资损定义v0.1" />
+            <ac:plain-text-link-body>
+               <![CDATA[酷家乐资损定义]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         ）<span style="color: rgb(122,134,154);">，请完成如下必填项：</span>
+      </em>
+   </span>
+</p>
+<ac:structured-macro ac:name="expand" ac:schema-version="1" ac:macro-id="f1f7b89a-b426-45c4-adb3-428e83f45655">
+   <ac:parameter ac:name="title">数据变更必填项</ac:parameter>
+   <ac:rich-text-body>
+      <p><strong><em><span style="color: rgb(122,134,154);"><span style="color: rgb(0,0,0);">数据准备</span></span></em></strong></p>
+      <ac:task-list>
+         <ac:task>
+            <ac:task-id>1327</ac:task-id>
+            <ac:task-status>incomplete</ac:task-status>
+            <ac:task-body><span style="color: rgb(165,173,186);"><em>进行真正的线上数据变更前，必须先准备好变更数据</em></span></ac:task-body>
+         </ac:task>
+      </ac:task-list>
+      <ul>
+         <li><span style="color: rgb(165,173,186);"><em>如DBV变更，需要先准备变更sql</em></span></li>
+         <li>
+            <span style="color: rgb(165,173,186);"><em>如批量业务数据变更，需要先准备好变更数据并存档</em></span>
+            <ul>
+               <li><span style="color: rgb(165,173,186);"><em>可以储存至COS等存储介质</em></span></li>
+            </ul>
+         </li>
+      </ul>
+      <p><strong><em><span style="color: rgb(0,0,0);">回滚设计</span></em></strong></p>
+      <ac:task-list>
+         <ac:task>
+            <ac:task-id>1328</ac:task-id>
+            <ac:task-status>incomplete</ac:task-status>
+            <ac:task-body><span style="color: rgb(165,173,186);"><em>任何数据变更都必须有明确可行的回滚设计</em></span></ac:task-body>
+         </ac:task>
+         <ac:task>
+            <ac:task-id>1329</ac:task-id>
+            <ac:task-status>incomplete</ac:task-status>
+            <ac:task-body><span style="color: rgb(165,173,186);"><em>变更的数据需要有备份存档，能够进行数据回滚</em></span></ac:task-body>
+         </ac:task>
+      </ac:task-list>
+      <p><em><span style="color: rgb(0,0,0);"><strong>灰度执行规划</strong></span></em></p>
+      <ac:task-list>
+         <ac:task>
+            <ac:task-id>1330</ac:task-id>
+            <ac:task-status>incomplete</ac:task-status>
+            <ac:task-body><span style="color: rgb(165,173,186);"><em>线上数据变更需</em></span></ac:task-body>
+         </ac:task>
+      </ac:task-list>
+   </ac:rich-text-body>
+</ac:structured-macro>
+<ac:task-list>
+   <ac:task>
+      <ac:task-id>859</ac:task-id>
+      <ac:task-status>incomplete</ac:task-status>
+      <ac:task-body>
+         <p><span style="color: rgb(51,51,51);"><em><strong>本Dev Design涉及内容无破坏性变更</strong></em></span></p>
+      </ac:task-body>
+   </ac:task>
+</ac:task-list>
+<p>
+   <span style="color: rgb(51,51,51);">
+      <em>
+         <span style="color: rgb(165,173,186);">
+            <span style="color: rgb(122,134,154);">
+               &nbsp; &nbsp; 如果有破坏性变更，参考
+               <ac:link>
+                  <ri:page ri:space-key="~qingliang" ri:content-title="1.5.1 破坏性变更的收拢和审核" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[破坏性变更的收拢和审核]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+               和
+               <ac:link>
+                  <ri:page ri:space-key="~qingliang" ri:content-title="1.5 兼容性问题和规范" />
+                  <ac:plain-text-link-body>
+                     <![CDATA[兼容性问题和规范]]>
+                  </ac:plain-text-link-body>
+               </ac:link>
+               ，请完成如下必填项：
+            </span>
+         </span>
+      </em>
+   </span>
+</p>
+<ac:structured-macro ac:name="expand" ac:schema-version="1" ac:macro-id="fed22c27-9311-42ad-ae08-3b110b7f0209">
+   <ac:parameter ac:name="title">破环性变更必填项</ac:parameter>
+   <ac:rich-text-body>
+      <ac:task-list>
+         <ac:task>
+            <ac:task-id>860</ac:task-id>
+            <ac:task-status>incomplete</ac:task-status>
+            <ac:task-body><span style="color: rgb(165,173,186);"><em>分析此次破坏性变更的原因、是否能够避免接下来更长的时间内不再有破坏性改动</em></span></ac:task-body>
+         </ac:task>
+      </ac:task-list>
+      <p><br /></p>
+      <ac:task-list>
+         <ac:task>
+            <ac:task-id>861</ac:task-id>
+            <ac:task-status>incomplete</ac:task-status>
+            <ac:task-body><span style="color: rgb(165,173,186);"><em>梳理此次破坏性变更的影响面，并及时通知相关方协同变更</em></span></ac:task-body>
+         </ac:task>
+      </ac:task-list>
+      <p><br /></p>
+   </ac:rich-text-body>
+</ac:structured-macro>
+<h2>5.5 开源评估</h2>
+<p>
+   <span style="color: rgb(122,134,154);">
+      <em>
+         若使用了开源模块，参考
+         <ac:link>
+            <ri:page ri:space-key="EPS" ri:content-title="1.6.2-1-8 开源协议使用规范" />
+            <ac:plain-text-link-body>
+               <![CDATA[开源协议使用规范]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+         ，请说明 (未使用开源则填写 &ldquo;无&rdquo;)：
+      </em>
+   </span>
+</p>
+<ul>
+   <li><span style="color: rgb(122,134,154);"><em>所使用开源模块的协议是：</em></span></li>
+   <li><span style="color: rgb(122,134,154);"><em>使用该开源模块的用途是：</em></span></li>
+</ul>
+<h2><span style="color: rgb(122,134,154);"><span style="color: rgb(0,0,0);">5.6 遗留技术债</span></span></h2>
+<p><span style="color: rgb(122,134,154);"><em>请在这里说明下本次设计存在的需要后续详细设计的遗留技术债，以及可能的解决方案。</em></span></p>
+<h1>6. 其它相关信息</h1>
+<p>
+   <span style="color: rgb(165,173,186);">
+      <em>
+         <span style="color: rgb(122,134,154);">请在这里对技术设计其它方面的细节进行说明，例如安全相关、权限相关、调研信息、资源相关、关联的技术设计等。参考：</span>
+         <ac:link>
+            <ri:page ri:space-key="WEBJGW" ri:content-title="13. 安全分析" />
+            <ac:plain-text-link-body>
+               <![CDATA[安全分析]]>
+            </ac:plain-text-link-body>
+         </ac:link>
+      </em>
+   </span>
+</p>
+<p><span style="color: rgb(165,173,186);"><em><a href="https://cf.qunhequnhe.com/pages/viewpage.action?pageId=131535182" style="text-decoration: none;"><span style="color: rgb(122,134,154);">如果本设计中将使用IT资源（包括服务器、数据库、COS等），请在这里说明具体需求及用法（需要合理使用资源，腾讯云资源使用规范可参考云</span>产品</a>，<span style="color: rgb(122,134,154);">建议与运维团队确认）</span>。</em></span></p>
+<p><span style="color: rgb(122,134,154);"><em>如果没有，可以删除本节。</em></span></p>
