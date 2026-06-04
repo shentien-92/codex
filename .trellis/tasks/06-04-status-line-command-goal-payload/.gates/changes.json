@@ -1,7 +1,18 @@
 {
   "gate": "changes",
   "generatedBy": "task.py",
-  "completedAt": "2026-06-04T06:23:35.074292+00:00",
-  "hasRelevantChanges": false,
-  "reason": "Planning-only PRD task; no implementation changes for this task yet."
+  "completedAt": "2026-06-04T06:51:28.311414+00:00",
+  "overwritten": true,
+  "overwriteReason": "Implementation completed after prior planning marker.",
+  "overwrites": [
+    {
+      "gate": "changes",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T06:23:35.074292+00:00",
+      "hasRelevantChanges": false,
+      "reason": "Planning-only PRD task; no implementation changes for this task yet."
+    }
+  ],
+  "hasRelevantChanges": true,
+  "reason": "Implemented goal payload support for tui.status_line_command, including refresh on goal update/clear and focused codex-tui coverage."
 }

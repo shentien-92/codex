@@ -28,6 +28,15 @@ impl GoalStatusState {
         now: Instant,
         active_turn_started_at: Option<Instant>,
     ) -> Option<GoalStatusIndicator> {
+        let goal = self.goal_with_elapsed(now, active_turn_started_at);
+        goal_status_indicator_from_app_goal(&goal)
+    }
+
+    pub(super) fn goal_with_elapsed(
+        &self,
+        now: Instant,
+        active_turn_started_at: Option<Instant>,
+    ) -> AppThreadGoal {
         let mut goal = self.goal.clone();
         if goal.status == AppThreadGoalStatus::Active
             && let Some(active_turn_started_at) = active_turn_started_at
@@ -38,7 +47,7 @@ impl GoalStatusState {
                 .time_used_seconds
                 .saturating_add(i64::try_from(active_seconds).unwrap_or(i64::MAX));
         }
-        goal_status_indicator_from_app_goal(&goal)
+        goal
     }
 }
 
@@ -62,6 +71,36 @@ pub(super) fn goal_status_indicator_from_app_goal(
                 goal.time_used_seconds,
             )),
         }),
+    }
+}
+
+pub(super) fn goal_status_payload_value(status: AppThreadGoalStatus) -> &'static str {
+    match status {
+        AppThreadGoalStatus::Active => "active",
+        AppThreadGoalStatus::Paused => "paused",
+        AppThreadGoalStatus::Blocked => "blocked",
+        AppThreadGoalStatus::UsageLimited => "usageLimited",
+        AppThreadGoalStatus::BudgetLimited => "budgetLimited",
+        AppThreadGoalStatus::Complete => "complete",
+    }
+}
+
+pub(super) fn goal_payload_usage(goal: &AppThreadGoal) -> Option<String> {
+    match goal.status {
+        AppThreadGoalStatus::Active => {
+            active_goal_usage(goal.token_budget, goal.tokens_used, goal.time_used_seconds)
+        }
+        AppThreadGoalStatus::Paused
+        | AppThreadGoalStatus::Blocked
+        | AppThreadGoalStatus::UsageLimited => None,
+        AppThreadGoalStatus::BudgetLimited => {
+            stopped_goal_budget_usage(goal.token_budget, goal.tokens_used)
+        }
+        AppThreadGoalStatus::Complete => Some(completed_goal_usage(
+            goal.token_budget,
+            goal.tokens_used,
+            goal.time_used_seconds,
+        )),
     }
 }
 
@@ -108,6 +147,7 @@ mod tests {
     use super::GoalStatusState;
     use super::active_goal_usage;
     use super::completed_goal_usage;
+    use super::goal_status_payload_value;
     use super::stopped_goal_budget_usage;
     use crate::bottom_pane::GoalStatusIndicator;
     use codex_app_server_protocol::ThreadGoal as AppThreadGoal;
@@ -174,6 +214,28 @@ mod tests {
                 /*time_used_seconds*/ 36_720,
             ),
             "10h 12m".to_string()
+        );
+    }
+
+    #[test]
+    fn goal_status_payload_value_uses_app_server_wire_names() {
+        assert_eq!(
+            [
+                goal_status_payload_value(AppThreadGoalStatus::Active),
+                goal_status_payload_value(AppThreadGoalStatus::Paused),
+                goal_status_payload_value(AppThreadGoalStatus::Blocked),
+                goal_status_payload_value(AppThreadGoalStatus::UsageLimited),
+                goal_status_payload_value(AppThreadGoalStatus::BudgetLimited),
+                goal_status_payload_value(AppThreadGoalStatus::Complete),
+            ],
+            [
+                "active",
+                "paused",
+                "blocked",
+                "usageLimited",
+                "budgetLimited",
+                "complete",
+            ]
         );
     }
 

@@ -58,6 +58,10 @@ use codex_app_server_protocol::ServerRequest;
 use codex_app_server_protocol::SessionSource;
 use codex_app_server_protocol::Thread;
 use codex_app_server_protocol::ThreadClosedNotification;
+use codex_app_server_protocol::ThreadGoal;
+use codex_app_server_protocol::ThreadGoalClearedNotification;
+use codex_app_server_protocol::ThreadGoalStatus;
+use codex_app_server_protocol::ThreadGoalUpdatedNotification;
 use codex_app_server_protocol::ThreadItem;
 use codex_app_server_protocol::ThreadSettings;
 use codex_app_server_protocol::ThreadSettingsUpdatedNotification;
@@ -1254,6 +1258,93 @@ async fn subagent_notification_updates_status_line_command_agents() {
     assert_eq!(payload["agents"]["items"][0]["status"], "completed");
 }
 
+#[tokio::test]
+async fn thread_goal_update_updates_status_line_command_goal() {
+    let (mut app, mut app_event_rx, _op_rx, payload_path, _temp_dir) =
+        make_status_line_command_agents_test_app().await;
+    let thread_id = app.chat_widget.thread_id().expect("thread id");
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ThreadGoalUpdated(ThreadGoalUpdatedNotification {
+            thread_id: thread_id.to_string(),
+            turn_id: None,
+            goal: test_status_line_command_goal(
+                thread_id,
+                ThreadGoalStatus::Active,
+                Some(50_000),
+                /*tokens_used*/ 12_500,
+                /*time_used_seconds*/ 65,
+            ),
+        }),
+    ));
+
+    let content = recv_status_line_command_update(&mut app_event_rx).await;
+    let payload = std::fs::read_to_string(payload_path).expect("payload captured");
+    let payload: serde_json::Value = serde_json::from_str(&payload).expect("payload json");
+
+    assert_eq!(status_line_content_text(&content), "done");
+    assert_eq!(payload["goal"]["objective"], "Expose goal in statusbar");
+    assert_eq!(payload["goal"]["status"], "active");
+    assert_eq!(payload["goal"]["tokenBudget"], 50_000);
+    assert_eq!(payload["goal"]["tokensUsed"], 12_500);
+    assert_eq!(payload["goal"]["timeUsedSeconds"], 65);
+    assert_eq!(payload["goal"]["usage"], "12.5K / 50K");
+}
+
+#[tokio::test]
+async fn thread_goal_cleared_updates_status_line_command_goal_to_null() {
+    let (mut app, mut app_event_rx, _op_rx, payload_path, _temp_dir) =
+        make_status_line_command_agents_test_app().await;
+    let thread_id = app.chat_widget.thread_id().expect("thread id");
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ThreadGoalUpdated(ThreadGoalUpdatedNotification {
+            thread_id: thread_id.to_string(),
+            turn_id: None,
+            goal: test_status_line_command_goal(
+                thread_id,
+                ThreadGoalStatus::Active,
+                Some(50_000),
+                /*tokens_used*/ 12_500,
+                /*time_used_seconds*/ 65,
+            ),
+        }),
+    ));
+    let _ = recv_status_line_command_update(&mut app_event_rx).await;
+
+    app.handle_thread_event_now(ThreadBufferedEvent::Notification(
+        ServerNotification::ThreadGoalCleared(ThreadGoalClearedNotification {
+            thread_id: thread_id.to_string(),
+        }),
+    ));
+
+    let content = recv_status_line_command_update(&mut app_event_rx).await;
+    let payload = std::fs::read_to_string(payload_path).expect("payload captured");
+    let payload: serde_json::Value = serde_json::from_str(&payload).expect("payload json");
+
+    assert_eq!(status_line_content_text(&content), "done");
+    assert_eq!(payload["goal"], serde_json::Value::Null);
+}
+
+fn test_status_line_command_goal(
+    thread_id: ThreadId,
+    status: ThreadGoalStatus,
+    token_budget: Option<i64>,
+    tokens_used: i64,
+    time_used_seconds: i64,
+) -> ThreadGoal {
+    ThreadGoal {
+        thread_id: thread_id.to_string(),
+        objective: "Expose goal in statusbar".to_string(),
+        status,
+        token_budget,
+        tokens_used,
+        time_used_seconds,
+        created_at: 1,
+        updated_at: 2,
+    }
+}
+
 async fn make_status_line_command_agents_test_app() -> (
     App,
     tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
@@ -1263,12 +1354,24 @@ async fn make_status_line_command_agents_test_app() -> (
 ) {
     let (mut app, app_event_rx, op_rx) = make_test_app_with_channels().await;
     std::fs::create_dir_all(app.chat_widget.config_ref().cwd.as_path()).expect("test cwd");
+    let thread_id = ThreadId::new();
+    let session = test_thread_session(
+        thread_id,
+        app.chat_widget.config_ref().cwd.as_path().to_path_buf(),
+    );
+    app.enqueue_primary_thread_session(session.clone(), Vec::new())
+        .await
+        .expect("primary thread session");
     let temp_dir = tempfile::tempdir().expect("tempdir");
     let payload_path = temp_dir.path().join("payload.json");
     let mut config = app.chat_widget.config_ref().clone();
     config.active_project = codex_config::config_toml::ProjectConfig {
         trust_level: Some(codex_protocol::config_types::TrustLevel::Trusted),
     };
+    config
+        .features
+        .set_enabled(Feature::Goals, /*enabled*/ true)
+        .expect("enable goals");
     config.tui_status_line_command = Some(codex_config::types::StatusLineCommandConfig {
         command: vec![
             "/bin/sh".to_string(),
@@ -1303,6 +1406,7 @@ async fn make_status_line_command_agents_test_app() -> (
         session_telemetry: app.session_telemetry.clone(),
     });
     app.replace_chat_widget(replacement);
+    app.chat_widget.handle_thread_session(session);
     (app, app_event_rx, op_rx, payload_path, temp_dir)
 }
 

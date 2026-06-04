@@ -3,7 +3,7 @@
   "name": "status-line-command-goal-payload",
   "title": "Status line command goal payload",
   "description": "Expose current goal status in tui.status_line_command payload so custom status bars can render goal information when built-in goal UI is hidden.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

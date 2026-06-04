@@ -1,0 +1,14 @@
+{
+  "gate": "pre-dev",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T06:29:34.774725+00:00",
+  "source": "trellis-before-dev",
+  "specsRead": [
+    ".trellis/spec/codex/frontend/index.md",
+    ".trellis/spec/codex/frontend/quality-guidelines.md",
+    ".trellis/spec/codex/frontend/type-safety.md",
+    ".trellis/spec/guides/index.md",
+    ".trellis/spec/guides/cross-layer-thinking-guide.md",
+    ".trellis/spec/guides/code-reuse-thinking-guide.md"
+  ]
+}

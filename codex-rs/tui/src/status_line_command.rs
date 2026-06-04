@@ -258,6 +258,7 @@ pub(crate) struct StatusLineCommandPayload {
     pub(crate) status: PayloadStatus,
     pub(crate) context: PayloadContext,
     pub(crate) usage: PayloadUsage,
+    pub(crate) goal: Option<PayloadGoal>,
     pub(crate) git: PayloadGit,
     pub(crate) terminal: PayloadTerminal,
     pub(crate) agents: PayloadAgents,
@@ -311,6 +312,17 @@ pub(crate) struct PayloadUsage {
     pub(crate) input_tokens: i64,
     pub(crate) output_tokens: i64,
     pub(crate) total_tokens: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PayloadGoal {
+    pub(crate) objective: String,
+    pub(crate) status: String,
+    pub(crate) token_budget: Option<i64>,
+    pub(crate) tokens_used: i64,
+    pub(crate) time_used_seconds: i64,
+    pub(crate) usage: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -425,6 +437,14 @@ mod tests {
                 output_tokens: 20,
                 total_tokens: 120,
             },
+            goal: Some(PayloadGoal {
+                objective: "Expose goal status".to_string(),
+                status: "active".to_string(),
+                token_budget: Some(50_000),
+                tokens_used: 12_500,
+                time_used_seconds: 65,
+                usage: Some("12.5K / 50K".to_string()),
+            }),
             git: PayloadGit {
                 branch: Some("feature/status-line".to_string()),
                 pull_request_number: Some(123),
@@ -463,6 +483,11 @@ mod tests {
             "https://github.com/openai/codex/pull/123"
         );
         assert_eq!(value["terminal"]["columns"], 120);
+        assert_eq!(value["goal"]["tokenBudget"], 50_000);
+        assert_eq!(value["goal"]["tokensUsed"], 12_500);
+        assert_eq!(value["goal"]["timeUsedSeconds"], 65);
+        assert_eq!(value["goal"]["status"], "active");
+        assert_eq!(value["goal"]["usage"], "12.5K / 50K");
         assert_eq!(value["agents"]["total"], 2);
         assert_eq!(value["agents"]["current"], "Lagrange [worker]");
         assert_eq!(value["agents"]["items"][0]["status"], "running");

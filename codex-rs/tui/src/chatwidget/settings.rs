@@ -670,6 +670,7 @@ impl ChatWidget {
             self.current_goal_status_indicator = None;
             self.current_goal_status = None;
             self.update_collaboration_mode_indicator();
+            self.refresh_status_line();
             return;
         }
         if goal.status == AppThreadGoalStatus::BudgetLimited
@@ -679,6 +680,7 @@ impl ChatWidget {
         }
         self.current_goal_status = Some(GoalStatusState::new(goal, Instant::now()));
         self.update_collaboration_mode_indicator();
+        self.refresh_status_line();
     }
 
     /// Cycle to the next collaboration mode variant (Plan -> Default -> Plan).

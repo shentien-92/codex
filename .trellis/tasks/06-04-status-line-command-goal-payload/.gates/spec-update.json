@@ -1,0 +1,9 @@
+{
+  "gate": "spec-update",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T06:51:28.311500+00:00",
+  "overwritten": true,
+  "overwriteReason": "Spec update decision after implementation.",
+  "status": "not-needed",
+  "reason": "Change follows existing TUI status-line-command and goal-display contracts; no reusable project guideline updates were discovered."
+}

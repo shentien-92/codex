@@ -74,6 +74,7 @@ impl ChatWidget {
         {
             self.current_goal_status = None;
             self.update_collaboration_mode_indicator();
+            self.refresh_status_line();
         }
     }
 }

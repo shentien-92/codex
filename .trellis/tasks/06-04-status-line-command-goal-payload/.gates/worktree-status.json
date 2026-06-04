@@ -1,0 +1,9 @@
+{
+  "gate": "worktree-status",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T06:52:04.159995+00:00",
+  "command": "git status --short",
+  "exitCode": 0,
+  "stdout": " M .trellis/tasks/06-04-status-line-command-goal-payload/.gates/changes.json\n M .trellis/tasks/06-04-status-line-command-goal-payload/session-share.md\n M .trellis/tasks/06-04-status-line-command-goal-payload/task.json\n M .trellis/workspace/xiuran/journal-1.md\n M codex-rs/tui/src/app/tests.rs\n M codex-rs/tui/src/chatwidget/goal_menu.rs\n M codex-rs/tui/src/chatwidget/goal_status.rs\n M codex-rs/tui/src/chatwidget/settings.rs\n M codex-rs/tui/src/chatwidget/status_surfaces.rs\n M codex-rs/tui/src/status_line_command.rs\n?? .trellis/tasks/06-04-status-line-command-goal-payload/.gates/pre-dev.json\n?? .trellis/tasks/06-04-status-line-command-goal-payload/.gates/quality.json\n?? .trellis/tasks/06-04-status-line-command-goal-payload/.gates/spec-update.json\n",
+  "stderr": ""
+}

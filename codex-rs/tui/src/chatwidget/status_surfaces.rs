@@ -13,6 +13,7 @@ use crate::legacy_core::config::Config;
 use crate::status::format_tokens_compact;
 use crate::status_line_command::PayloadContext;
 use crate::status_line_command::PayloadGit;
+use crate::status_line_command::PayloadGoal;
 use crate::status_line_command::PayloadModel;
 use crate::status_line_command::PayloadSession;
 use crate::status_line_command::PayloadStatus;
@@ -530,6 +531,7 @@ impl ChatWidget {
                 output_tokens: usage.output_tokens,
                 total_tokens: usage.total_tokens,
             },
+            goal: self.status_line_goal_payload(),
             git: PayloadGit {
                 branch: self.status_line_branch.clone(),
                 pull_request_number: self
@@ -551,6 +553,25 @@ impl ChatWidget {
             },
             agents: self.status_line_agents.clone(),
         }
+    }
+
+    fn status_line_goal_payload(&self) -> Option<PayloadGoal> {
+        if !self.config.features.enabled(Feature::Goals) {
+            return None;
+        }
+        let goal = self.current_goal_status.as_ref()?.goal_with_elapsed(
+            Instant::now(),
+            self.turn_lifecycle.goal_status_active_turn_started_at,
+        );
+        let usage = goal_status::goal_payload_usage(&goal);
+        Some(PayloadGoal {
+            objective: goal.objective,
+            status: goal_status::goal_status_payload_value(goal.status).to_string(),
+            token_budget: goal.token_budget,
+            tokens_used: goal.tokens_used,
+            time_used_seconds: goal.time_used_seconds,
+            usage,
+        })
     }
 
     /// Resolves the project root associated with `cwd`.
