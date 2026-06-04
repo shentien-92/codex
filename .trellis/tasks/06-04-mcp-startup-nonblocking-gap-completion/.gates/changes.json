@@ -1,7 +1,18 @@
 {
   "gate": "changes",
   "generatedBy": "task.py",
-  "completedAt": "2026-06-04T03:21:23.441780+00:00",
+  "completedAt": "2026-06-04T05:15:48.951054+00:00",
+  "overwritten": true,
+  "overwriteReason": "Updated after adding missing session/subagent regression coverage.",
+  "overwrites": [
+    {
+      "gate": "changes",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T03:21:23.441780+00:00",
+      "hasRelevantChanges": true,
+      "reason": "Implemented nonblocking MCP available metadata/resource/connector/plugin paths"
+    }
+  ],
   "hasRelevantChanges": true,
-  "reason": "Implemented nonblocking MCP available metadata/resource/connector/plugin paths"
+  "reason": "Added codex-core session/subagent MCP startup nonblocking integration tests plus quality coverage notes."
 }

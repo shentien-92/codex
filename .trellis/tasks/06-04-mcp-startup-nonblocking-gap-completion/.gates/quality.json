@@ -1,9 +1,9 @@
 {
   "gate": "quality",
   "generatedBy": "task.py",
-  "completedAt": "2026-06-04T04:01:07.520491+00:00",
+  "completedAt": "2026-06-04T05:15:48.949786+00:00",
   "overwritten": true,
-  "overwriteReason": "Updated after bumping workspace package version to 0.136.0 and rebuilding debug binary.",
+  "overwriteReason": "Updated after adding session/subagent regression tests and rerunning focused acceptance checks.",
   "overwrites": [
     {
       "gate": "quality",
@@ -38,11 +38,23 @@
         "cd codex-rs && cargo check -p codex-mcp -p codex-core; just test -p codex-mcp; cargo test -p codex-core --lib tools::handlers::mcp_resource::tests::readiness_error_message_reports_still_starting_server; just fix -p codex-core; git diff --check; representative codex-core reruns after building codex/test_stdio_server binaries: CLI stream passed, proxy-env test passed with proxy vars unset, rmcp stdio round trip passed on retry/flaky"
       ],
       "result": "passed"
+    },
+    {
+      "gate": "quality",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T04:01:07.520491+00:00",
+      "overwritten": true,
+      "overwriteReason": "Updated after bumping workspace package version to 0.136.0 and rebuilding debug binary.",
+      "source": "trellis-check",
+      "commands": [
+        "cd codex-rs && cargo build -p codex-cli --bin codex; ./target/debug/codex --version => codex-cli 0.136.0; git diff --check. Note: just bazel-lock-update was attempted but could not run because bazel is not installed on this machine."
+      ],
+      "result": "passed"
     }
   ],
   "source": "trellis-check",
   "commands": [
-    "cd codex-rs && cargo build -p codex-cli --bin codex; ./target/debug/codex --version => codex-cli 0.136.0; git diff --check. Note: just bazel-lock-update was attempted but could not run because bazel is not installed on this machine."
+    "cd codex-rs && just fmt; just test -p codex-core mcp_startup_nonblocking; just fix -p codex-core; git diff --check. Earlier task validation also ran just test -p codex-mcp. See quality.md for PRD coverage matrix and broad core-suite residual note."
   ],
   "result": "passed"
 }

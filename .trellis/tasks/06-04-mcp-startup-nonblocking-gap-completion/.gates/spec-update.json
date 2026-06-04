@@ -1,7 +1,18 @@
 {
   "gate": "spec-update",
   "generatedBy": "task.py",
-  "completedAt": "2026-06-04T03:21:48.168224+00:00",
+  "completedAt": "2026-06-04T05:15:48.954764+00:00",
+  "overwritten": true,
+  "overwriteReason": "Re-evaluated after adding test-only gap coverage.",
+  "overwrites": [
+    {
+      "gate": "spec-update",
+      "generatedBy": "task.py",
+      "completedAt": "2026-06-04T03:21:48.168224+00:00",
+      "status": "not-needed",
+      "reason": "No Rust code-spec layer exists under .trellis/spec; MCP runtime contracts are captured in this task's prd/design/implement artifacts"
+    }
+  ],
   "status": "not-needed",
-  "reason": "No Rust code-spec layer exists under .trellis/spec; MCP runtime contracts are captured in this task's prd/design/implement artifacts"
+  "reason": "No new reusable project convention; this round adds regression coverage for existing MCP nonblocking design."
 }

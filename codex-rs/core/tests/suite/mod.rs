@@ -61,6 +61,7 @@ mod image_rollout;
 mod items;
 mod json_result;
 mod live_cli;
+mod mcp_startup_nonblocking;
 mod mcp_turn_metadata;
 mod model_overrides;
 mod model_switching;
