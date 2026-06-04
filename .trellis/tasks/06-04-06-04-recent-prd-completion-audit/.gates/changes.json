@@ -1,0 +1,7 @@
+{
+  "gate": "changes",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T06:10:41.923699+00:00",
+  "hasRelevantChanges": true,
+  "reason": "Added audit artifact covering archived June PRDs and evidence for missed-feature review."
+}
