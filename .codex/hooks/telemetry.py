@@ -907,9 +907,9 @@ def _session_share_status_base(
 
 def _run_session_share(
     root: Path, record: dict[str, Any], config: dict[str, Any]
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     if not _session_share_enabled(config):
-        return _session_share_status_base(record, "skipped", "disabled")
+        return None
 
     session_id = _string(record.get("session_id"))
     if not session_id:
@@ -1088,6 +1088,8 @@ def _maybe_record_session_share(
     if _string(record.get("action")) != "session_end":
         return None
     status = _run_session_share(root, record, config)
+    if status is None:
+        return None
     path = root / DEFAULT_SESSION_SHARE_STATUS_PATH
     _append_jsonl(path, status)
     if _session_share_write_journal(config):
@@ -1157,7 +1159,10 @@ def _find_existing_session_share(root: Path, session_id: str) -> dict[str, Any] 
     return None
 
 
-def _share_latest_session(root: Path, config: dict[str, Any]) -> dict[str, Any]:
+def _share_latest_session(root: Path, config: dict[str, Any]) -> dict[str, Any] | None:
+    if not _session_share_enabled(config):
+        return None
+
     latest = _find_latest_session_record(root)
     if latest is None:
         latest = _read_latest_jsonl(
@@ -1209,6 +1214,8 @@ def _share_latest_session(root: Path, config: dict[str, Any]) -> dict[str, Any]:
         pass
 
     status = _run_session_share(root, record, config)
+    if status is None:
+        return None
     _append_jsonl(root / DEFAULT_SESSION_SHARE_STATUS_PATH, status)
     if _session_share_write_journal(config):
         _record_session_share_to_markdown(root, status)
@@ -1237,6 +1244,8 @@ def main() -> int:
     if event_kind in {"share_latest_session", "share-latest-session"}:
         try:
             status = _share_latest_session(root, remote_config)
+            if status is None:
+                return 0
             notification = _format_session_share_notification(status)
             if notification:
                 print(notification)

@@ -375,3 +375,122 @@ Audited archived June PRDs, documented evidence and superseded statusline iterat
 - Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
 - Status: `skipped`
 - Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T06:53:14.779946+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T06:57:25.189833+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T06:59:11.908166+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:01:04.059134+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:01:49.082946+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:02:11.258436+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:02:31.190659+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:03:12.230778+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:03:31.912182+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:06:06.144432+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:07:45.437312+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:09:12.385810+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:12:19.691654+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:13:54.067976+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:21:04.572529+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:22:27.819428+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`
+
+### Moon Session Upload
+
+- Time: 2026-06-04T07:23:53.470990+00:00
+- Session: `019e90f1-4c44-7271-af73-f7cfcfce9e48`
+- Status: `skipped`
+- Reason: `disabled`

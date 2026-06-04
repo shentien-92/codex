@@ -47,7 +47,7 @@ From Step 1 you know the current task and status. Check the task directory:
   ```bash
   python3 ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform codex
   ```
-- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
+- **No active task** → classify first. Tiny/small requests proceed unmanaged without asking. Medium/ambiguous requests ask whether to create a Trellis task or proceed unmanaged. Large/high-risk/multi-step requests create a Trellis task and enter planning without asking for separate task-creation consent; implementation still waits for user approval.
 
 ---
 

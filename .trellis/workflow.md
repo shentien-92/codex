@@ -159,8 +159,9 @@ This is UX guidance, not a lifecycle gate: do not add extra questions, do not bl
 
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
+- Tiny/small request: proceed unmanaged without asking. Do not create Trellis task/artifacts/gates; still follow repo docs, specs, tests, and git hygiene as relevant.
+- Medium/ambiguous request: ask whether to create a Trellis task or proceed unmanaged. Recommend based on risk, expected scope, and rollback cost.
+- Large/high-risk/multi-step request: create a Trellis task and enter planning without asking for separate task-creation consent. Tell the user you are doing so and why.
 - User approval to create a task is not approval to start implementation. Planning still happens first.
 - When asking users for decisions, choices, review, or approval, prefer the host/native Ask Question UI where available; use plain text only when no suitable interactive tool exists.
 
@@ -185,9 +186,10 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
 [workflow-state:no_task]
-No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+No active task. First classify the current turn before creating any Trellis task.
+Tiny/small request: proceed unmanaged without asking. Do not create Trellis task/artifacts/gates; still follow repo docs, specs, tests, and git hygiene as relevant.
+Medium/ambiguous request: ask whether to create a Trellis task or proceed unmanaged. Recommend based on risk, expected scope, and rollback cost.
+Large/high-risk/multi-step request: create a Trellis task and enter planning without asking for separate task-creation consent. Tell the user you are doing so and why. User approval is still required before implementation starts.
 When this triage needs a user decision, prefer the host/native Ask Question tool when available and suitable; fall back to normal text when unavailable or unsuitable.
 [/workflow-state:no_task]
 
@@ -241,10 +243,11 @@ When this triage needs a user decision, prefer the host/native Ask Question tool
 Sub-agent dispatch protocol applies to all platforms and all sub-agents, including class-2 Codex/Copilot/Gemini/Qoder and `trellis-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions. Codex sub-agent dispatch also requires the main session to choose the spawn model when possible: pass the current main-session model if it is visible in Codex context/tool metadata; otherwise read the top-level `model` from user-level `~/.codex/config.toml`; if neither is available, omit `model` and report that official Codex may require an explicit model. Never guess or hardcode a model name.
 
 [workflow-state:in_progress]
-Flow: implement worker/agent -> check worker/agent -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
-Dispatch: default worker/sub-agent path; prompt starts with `Active task: <task path>`; Codex passes current/config `model` when known.
+Flow: Main-session default dispatch implement worker/agent -> check worker/agent -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Dispatch: class-2 Codex/Copilot/Gemini/Qoder prompts start with `Active task: <task path>`; Codex passes current/config `model` when known.
+Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement`; if already running as `trellis-check`, do NOT spawn another `trellis-check`. This routing is main session only.
 Context: jsonl -> `prd.md` -> `design.md?` -> `implement.md?`.
-Handles/results: use stable handles (`implement`, `check`, variants); read raw results when precision matters.
+Handles/results: stable handles (`implement`, `check`, variants); read raw results when precision matters.
 Details: `.trellis/workflow.md` [workflow-state:in_progress].
 [/workflow-state:in_progress]
 
@@ -718,7 +721,7 @@ This section is for developers who want to modify the Trellis workflow itself. A
 ### Changing what a step means
 
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
-- No active task must triage first and ask for task-creation consent before creating a Trellis task.
+- No active task must triage first: tiny/small unmanaged, medium ask, large/high-risk create a task and plan before implementation.
 - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
 

@@ -107,7 +107,7 @@ export function getStructuredTaskStatus(ctx, platformInput = null) {
       taskTitle: null,
       status: "NO ACTIVE TASK",
       source: active.source,
-      next: "Classify the current turn and ask for task-creation consent before creating any Trellis task",
+      next: "Classify the current turn: tiny/small proceed unmanaged; medium ask; large create a Trellis task and plan",
       missing: null,
       stale: false,
       ready: false,
