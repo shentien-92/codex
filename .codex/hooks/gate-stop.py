@@ -83,7 +83,7 @@ def main() -> int:
         return 0
 
     print(result.message, file=sys.stderr)
-    return 1
+    return 2
 
 
 if __name__ == "__main__":
