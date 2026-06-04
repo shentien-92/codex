@@ -1,0 +1,9 @@
+{
+  "gate": "worktree-status",
+  "generatedBy": "task.py",
+  "completedAt": "2026-06-04T06:11:00.496459+00:00",
+  "command": "git status --short",
+  "exitCode": 0,
+  "stdout": "?? .trellis/tasks/06-04-06-04-recent-prd-completion-audit/.gates/commit.json\n",
+  "stderr": ""
+}
