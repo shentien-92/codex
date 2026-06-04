@@ -178,6 +178,21 @@ pub(crate) fn new_info_event(message: String, hint: Option<String>) -> PlainHist
     PlainHistoryCell { lines }
 }
 
+pub(crate) fn new_goal_info_event(status: String, objective: String) -> PlainHistoryCell {
+    let lines: Vec<Line<'static>> = vec![
+        vec![
+            "• ".dim(),
+            "Goal ".into(),
+            status.into(),
+            " · ".dim(),
+            "Objective: ".dim(),
+            objective.bold(),
+        ]
+        .into(),
+    ];
+    PlainHistoryCell { lines }
+}
+
 pub(crate) fn new_error_event(message: String) -> PlainHistoryCell {
     // Use a hair space (U+200A) to create a subtle, near-invisible separation
     // before the text. VS16 is intentionally omitted to keep spacing tighter

@@ -7,7 +7,7 @@ use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
 use crate::bottom_pane::popup_consts::standard_popup_hint_line;
 use crate::goal_display::goal_status_label;
-use crate::goal_display::goal_usage_summary;
+use crate::history_cell;
 use codex_app_server_protocol::ThreadGoal;
 use codex_app_server_protocol::ThreadGoalStatus;
 use codex_protocol::ThreadId;
@@ -174,10 +174,12 @@ impl App {
         }
 
         match result {
-            Ok(response) => self.chat_widget.add_info_message(
-                format!("Goal {}", goal_status_label(response.goal.status)),
-                Some(goal_usage_summary(&response.goal)),
-            ),
+            Ok(response) => self
+                .chat_widget
+                .add_to_history(history_cell::new_goal_info_event(
+                    goal_status_label(response.goal.status).to_string(),
+                    response.goal.objective,
+                )),
             Err(err) => {
                 let action = if replacing_goal { "replace" } else { "set" };
                 self.chat_widget
@@ -205,10 +207,12 @@ impl App {
         }
 
         match result {
-            Ok(response) => self.chat_widget.add_info_message(
-                format!("Goal {}", goal_status_label(response.goal.status)),
-                Some(goal_usage_summary(&response.goal)),
-            ),
+            Ok(response) => self
+                .chat_widget
+                .add_to_history(history_cell::new_goal_info_event(
+                    goal_status_label(response.goal.status).to_string(),
+                    response.goal.objective,
+                )),
             Err(err) => self
                 .chat_widget
                 .add_error_message(thread_goal_error_message("update", &err)),
@@ -320,6 +324,7 @@ mod tests {
     use crate::history_cell::HistoryCell;
     use pretty_assertions::assert_eq;
     use ratatui::layout::Rect;
+    use ratatui::style::Modifier;
 
     use super::*;
 
@@ -368,6 +373,26 @@ mod tests {
             thread_goal_error_message("read", &err),
             "Failed to read thread goal: thread/goal/get failed in TUI"
         );
+    }
+
+    #[test]
+    fn goal_info_event_renders_objective_bold_without_hint_dimming() {
+        let cell = crate::history_cell::new_goal_info_event(
+            "active".to_string(),
+            "Ship the goal UI fix.".to_string(),
+        );
+
+        let lines = cell.display_lines(/*width*/ 80);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].to_string(),
+            "• Goal active · Objective: Ship the goal UI fix."
+        );
+        let objective_span = lines[0].spans.last().expect("objective span");
+        assert_eq!(objective_span.content.as_ref(), "Ship the goal UI fix.");
+        assert!(objective_span.style.add_modifier.contains(Modifier::BOLD));
+        assert!(!objective_span.style.add_modifier.contains(Modifier::DIM));
     }
 
     #[test]
