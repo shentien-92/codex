@@ -188,16 +188,6 @@ impl App {
         Ok(())
     }
 
-    pub(super) async fn refresh_in_memory_config_from_disk_best_effort(&mut self, action: &str) {
-        if let Err(err) = self.refresh_in_memory_config_from_disk().await {
-            tracing::warn!(
-                error = %err,
-                action,
-                "failed to refresh config before thread transition; continuing with current in-memory config"
-            );
-        }
-    }
-
     pub(super) async fn read_effective_config_after_overridden_write(
         &mut self,
         app_server: &mut AppServerSession,
@@ -1102,22 +1092,6 @@ mod tests {
             app_enabled_in_effective_config(&app.config, &app_id),
             Some(false)
         );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn refresh_in_memory_config_from_disk_best_effort_keeps_current_config_on_error()
-    -> Result<()> {
-        let mut app = make_test_app().await;
-        let codex_home = tempdir()?;
-        app.config.codex_home = codex_home.path().to_path_buf().abs();
-        std::fs::write(codex_home.path().join("config.toml"), "[broken")?;
-        let original_config = app.config.clone();
-
-        app.refresh_in_memory_config_from_disk_best_effort("starting a new thread")
-            .await;
-
-        assert_eq!(app.config, original_config);
         Ok(())
     }
 
