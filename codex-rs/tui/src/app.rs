@@ -18,6 +18,7 @@ use crate::app_event::WindowsSandboxEnableMode;
 use crate::app_event_sender::AppEventSender;
 use crate::app_server_session::AppServerSession;
 use crate::app_server_session::AppServerStartedThread;
+use crate::app_server_session::ThreadForkTarget;
 use crate::app_server_session::TurnPermissionsOverride;
 use crate::app_server_session::app_server_rate_limit_snapshots;
 use crate::bottom_pane::AppLinkViewParams;
@@ -911,8 +912,12 @@ impl App {
                     /*inc*/ 1,
                     &[("source", "cli_subcommand")],
                 );
+                let fork_target = ThreadForkTarget::with_rollout_path(
+                    target_session.thread_id,
+                    target_session.path.clone(),
+                );
                 let forked = app_server
-                    .fork_thread(config.clone(), target_session.thread_id)
+                    .fork_thread(config.clone(), fork_target)
                     .await
                     .wrap_err_with(|| {
                         let target_label = target_session.display_label();

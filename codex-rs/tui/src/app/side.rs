@@ -598,7 +598,9 @@ impl App {
             .await;
 
         let fork_config = self.side_fork_config();
-        match app_server.fork_thread(fork_config, parent_thread_id).await {
+        let fork_target =
+            ThreadForkTarget::with_rollout_path(parent_thread_id, self.chat_widget.rollout_path());
+        match app_server.fork_thread(fork_config, fork_target).await {
             Ok(forked) => {
                 let child_thread_id = forked.session.thread_id;
                 let channel = self.ensure_thread_channel(child_thread_id);
