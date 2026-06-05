@@ -181,8 +181,9 @@ impl App {
                             }
                         }
                         Err(err) => {
-                            self.chat_widget
-                                .add_error_message(Self::fork_current_session_error_message(&err));
+                            self.chat_widget.add_error_message(format!(
+                                "Failed to fork current session through the app server: {err}"
+                            ));
                         }
                     }
                 } else {
@@ -1662,7 +1663,8 @@ impl App {
                 parent_thread_id,
                 user_message,
             } => {
-                self.handle_start_side(tui, app_server, parent_thread_id, user_message)
+                return self
+                    .handle_start_side(tui, app_server, parent_thread_id, user_message)
                     .await;
             }
             AppEvent::OpenSkillsList => {
