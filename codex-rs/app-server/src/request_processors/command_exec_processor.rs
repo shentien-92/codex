@@ -1,5 +1,8 @@
 use super::*;
 
+use super::permission_profile::apply_builtin_permission_profile_to_config;
+use super::permission_profile::is_builtin_permission_profile_name;
+
 #[derive(Clone)]
 pub(crate) struct CommandExecRequestProcessor {
     arg0_paths: Arg0DispatchPaths,
@@ -204,33 +207,54 @@ impl CommandExecRequestProcessor {
             network_proxy_permission_profile,
             managed_network_requirements_enabled,
         ) = if let Some(permission_profile) = permission_profile {
-            let overrides = ConfigOverrides {
-                cwd: Some(cwd.to_path_buf()),
-                default_permissions: Some(permission_profile),
-                ..Default::default()
-            };
-            let config = self
-                .config_manager
-                .load_for_cwd(
-                    /*request_overrides*/ None,
-                    overrides,
-                    Some(self.config.cwd.to_path_buf()),
+            if is_builtin_permission_profile_name(&permission_profile) {
+                let mut config = self.config.as_ref().clone();
+                config.cwd = AbsolutePathBuf::resolve_path_against_base(
+                    cwd.as_path(),
+                    self.config.cwd.as_path(),
+                );
+                config.workspace_roots = vec![config.cwd.clone()];
+                config.workspace_roots_explicit = true;
+                config
+                    .permissions
+                    .set_workspace_roots(config.workspace_roots.clone());
+                let applied =
+                    apply_builtin_permission_profile_to_config(&mut config, &permission_profile)?;
+                (
+                    config.permissions.effective_permission_profile(),
+                    config.permissions.network.clone(),
+                    applied.permission_profile,
+                    config.managed_network_requirements_enabled(),
                 )
-                .await
-                .map_err(|err| invalid_request(format!("invalid permission profile: {err}")))?;
-            if let Some(warning) = config.startup_warnings.iter().find(|warning| {
-                warning.contains("Configured value for `permission_profile` is disallowed")
-            }) {
-                return Err(invalid_request(format!(
-                    "invalid permission profile: {warning}"
-                )));
+            } else {
+                let overrides = ConfigOverrides {
+                    cwd: Some(cwd.to_path_buf()),
+                    default_permissions: Some(permission_profile),
+                    ..Default::default()
+                };
+                let config = self
+                    .config_manager
+                    .load_for_cwd(
+                        /*request_overrides*/ None,
+                        overrides,
+                        Some(self.config.cwd.to_path_buf()),
+                    )
+                    .await
+                    .map_err(|err| invalid_request(format!("invalid permission profile: {err}")))?;
+                if let Some(warning) = config.startup_warnings.iter().find(|warning| {
+                    warning.contains("Configured value for `permission_profile` is disallowed")
+                }) {
+                    return Err(invalid_request(format!(
+                        "invalid permission profile: {warning}"
+                    )));
+                }
+                (
+                    config.permissions.effective_permission_profile(),
+                    config.permissions.network.clone(),
+                    config.permissions.permission_profile().clone(),
+                    config.managed_network_requirements_enabled(),
+                )
             }
-            (
-                config.permissions.effective_permission_profile(),
-                config.permissions.network.clone(),
-                config.permissions.permission_profile().clone(),
-                config.managed_network_requirements_enabled(),
-            )
         } else if let Some(policy) = sandbox_policy.map(|policy| policy.to_core()) {
             self.config
                 .permissions

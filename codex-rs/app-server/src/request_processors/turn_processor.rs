@@ -2,6 +2,9 @@ use super::*;
 use codex_protocol::protocol::AdditionalContextEntry as CoreAdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind;
 
+use super::permission_profile::apply_builtin_permission_profile_to_config;
+use super::permission_profile::is_builtin_permission_profile_name;
+
 #[derive(Clone)]
 pub(crate) struct TurnRequestProcessor {
     auth_manager: Arc<AuthManager>,
@@ -566,46 +569,81 @@ impl TurnRequestProcessor {
                         "{method} permission selection missing thread snapshot"
                     )));
                 };
-                let overrides = ConfigOverrides {
-                    cwd: cwd.clone(),
-                    workspace_roots: Some(runtime_workspace_roots_request.clone().unwrap_or_else(
-                        || {
-                            snapshot
-                                .workspace_roots
-                                .iter()
-                                .map(AbsolutePathBuf::to_path_buf)
-                                .collect()
-                        },
-                    )),
-                    default_permissions: Some(permissions),
-                    codex_linux_sandbox_exe: self.arg0_paths.codex_linux_sandbox_exe.clone(),
-                    main_execve_wrapper_exe: self.arg0_paths.main_execve_wrapper_exe.clone(),
-                    ..Default::default()
-                };
-                let config = self
-                    .config_manager
-                    .load_for_cwd(
-                        /*request_overrides*/ None,
-                        overrides,
-                        Some(snapshot.cwd.to_path_buf()),
+                if is_builtin_permission_profile_name(&permissions) {
+                    let base_cwd = cwd
+                        .as_ref()
+                        .map(|cwd| {
+                            AbsolutePathBuf::resolve_path_against_base(cwd, snapshot.cwd.as_path())
+                        })
+                        .unwrap_or_else(|| snapshot.cwd.clone());
+                    let workspace_roots = runtime_workspace_roots.clone().unwrap_or_else(|| {
+                        snapshot
+                            .workspace_roots
+                            .iter()
+                            .map(AbsolutePathBuf::to_path_buf)
+                            .map(|path| {
+                                AbsolutePathBuf::resolve_path_against_base(path, base_cwd.as_path())
+                            })
+                            .collect()
+                    });
+                    let mut config = self.config.as_ref().clone();
+                    config.cwd = base_cwd;
+                    config.workspace_roots = workspace_roots;
+                    config.workspace_roots_explicit = true;
+                    config
+                        .permissions
+                        .set_workspace_roots(config.workspace_roots.clone());
+                    let applied = apply_builtin_permission_profile_to_config(
+                        &mut config,
+                        permissions.as_str(),
+                    )?;
+                    (
+                        Some(applied.permission_profile),
+                        applied.active_permission_profile,
+                        Some(applied.profile_workspace_roots),
                     )
-                    .await
-                    .map_err(|err| config_load_error(&err))?;
-                // Startup config is allowed to fall back when requirements
-                // disallow a configured profile. An explicit settings update
-                // is different: reject it before accepting the request.
-                if let Some(warning) = config.startup_warnings.iter().find(|warning| {
-                    warning.contains("Configured value for `permission_profile` is disallowed")
-                }) {
-                    return Err(invalid_request(format!(
-                        "invalid thread settings override: {warning}"
-                    )));
+                } else {
+                    let overrides = ConfigOverrides {
+                        cwd: cwd.clone(),
+                        workspace_roots: Some(
+                            runtime_workspace_roots_request.clone().unwrap_or_else(|| {
+                                snapshot
+                                    .workspace_roots
+                                    .iter()
+                                    .map(AbsolutePathBuf::to_path_buf)
+                                    .collect()
+                            }),
+                        ),
+                        default_permissions: Some(permissions),
+                        codex_linux_sandbox_exe: self.arg0_paths.codex_linux_sandbox_exe.clone(),
+                        main_execve_wrapper_exe: self.arg0_paths.main_execve_wrapper_exe.clone(),
+                        ..Default::default()
+                    };
+                    let config = self
+                        .config_manager
+                        .load_for_cwd(
+                            /*request_overrides*/ None,
+                            overrides,
+                            Some(snapshot.cwd.to_path_buf()),
+                        )
+                        .await
+                        .map_err(|err| config_load_error(&err))?;
+                    // Startup config is allowed to fall back when requirements
+                    // disallow a configured profile. An explicit settings update
+                    // is different: reject it before accepting the request.
+                    if let Some(warning) = config.startup_warnings.iter().find(|warning| {
+                        warning.contains("Configured value for `permission_profile` is disallowed")
+                    }) {
+                        return Err(invalid_request(format!(
+                            "invalid thread settings override: {warning}"
+                        )));
+                    }
+                    (
+                        Some(config.permissions.permission_profile().clone()),
+                        config.permissions.active_permission_profile(),
+                        Some(config.permissions.profile_workspace_roots().to_vec()),
+                    )
                 }
-                (
-                    Some(config.permissions.permission_profile().clone()),
-                    config.permissions.active_permission_profile(),
-                    Some(config.permissions.profile_workspace_roots().to_vec()),
-                )
             } else {
                 (None, None, None)
             };

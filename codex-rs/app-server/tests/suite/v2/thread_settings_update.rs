@@ -23,6 +23,7 @@ use codex_app_server_protocol::TurnStartResponse;
 use codex_app_server_protocol::UserInput as V2UserInput;
 use codex_core::test_support::all_model_presets;
 use codex_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
+use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
 use core_test_support::responses;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
@@ -235,6 +236,41 @@ async fn thread_settings_update_rejects_sandbox_policy_with_permissions() -> Res
         error.error.message,
         "`permissions` cannot be combined with `sandboxPolicy`"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_settings_update_builtin_permissions_does_not_reload_disk_config() -> Result<()> {
+    let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
+    let thread = start_thread(&mut mcp).await?.thread;
+    std::fs::write(codex_home.path().join("config.toml"), "[broken")?;
+
+    send_thread_settings_update(
+        &mut mcp,
+        ThreadSettingsUpdateParams {
+            thread_id: thread.id.clone(),
+            permissions: Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY.to_string()),
+            ..Default::default()
+        },
+    )
+    .await?;
+
+    let updated = read_thread_settings_updated(&mut mcp).await?;
+    assert_eq!(updated.thread_id, thread.id);
+    assert_eq!(
+        updated
+            .thread_settings
+            .active_permission_profile
+            .as_ref()
+            .map(|profile| profile.id.as_str()),
+        Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY)
+    );
+
     Ok(())
 }
 

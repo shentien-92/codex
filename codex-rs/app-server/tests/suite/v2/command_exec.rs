@@ -241,6 +241,54 @@ async fn command_exec_accepts_permission_profile() -> Result<()> {
 }
 
 #[tokio::test]
+async fn command_exec_builtin_permission_profile_does_not_reload_disk_config() -> Result<()> {
+    let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri(), "never")?;
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+    std::fs::write(codex_home.path().join("config.toml"), "[broken")?;
+
+    let command_request_id = mcp
+        .send_command_exec_request(CommandExecParams {
+            command: vec![
+                "sh".to_string(),
+                "-lc".to_string(),
+                "printf 'profile'".to_string(),
+            ],
+            process_id: None,
+            tty: false,
+            stream_stdin: false,
+            stream_stdout_stderr: false,
+            output_bytes_cap: None,
+            disable_output_cap: false,
+            disable_timeout: false,
+            timeout_ms: None,
+            cwd: None,
+            env: None,
+            size: None,
+            sandbox_policy: None,
+            permission_profile: Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY.to_string()),
+        })
+        .await?;
+
+    let response = mcp
+        .read_stream_until_response_message(RequestId::Integer(command_request_id))
+        .await?;
+    let response: CommandExecResponse = to_response(response)?;
+    assert_eq!(
+        response,
+        CommandExecResponse {
+            exit_code: 0,
+            stdout: "profile".to_string(),
+            stderr: String::new(),
+        }
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn command_exec_permission_profile_starts_selected_network_proxy() -> Result<()> {
     let server = create_mock_responses_server_sequence_unchecked(Vec::new()).await;
     let codex_home = TempDir::new()?;

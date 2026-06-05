@@ -1,11 +1,12 @@
 use super::*;
 use crate::error_code::method_not_found;
-use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
-use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::models::PermissionProfile;
 use serde::de::DeserializeOwned;
+
+use super::permission_profile::apply_builtin_permission_profile_to_config;
+use super::permission_profile::is_builtin_permission_profile_name;
 
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
@@ -177,24 +178,6 @@ fn fork_request_carries_session_config(config: ThreadForkConfigPresence<'_>) -> 
                 .permissions
                 .as_deref()
                 .is_some_and(is_builtin_permission_profile_name))
-}
-
-fn is_builtin_permission_profile_name(profile_name: &str) -> bool {
-    matches!(
-        profile_name,
-        BUILT_IN_PERMISSION_PROFILE_READ_ONLY
-            | BUILT_IN_PERMISSION_PROFILE_WORKSPACE
-            | BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS
-    )
-}
-
-fn builtin_permission_profile(profile_name: &str) -> Option<PermissionProfile> {
-    match profile_name {
-        BUILT_IN_PERMISSION_PROFILE_READ_ONLY => Some(PermissionProfile::read_only()),
-        BUILT_IN_PERMISSION_PROFILE_WORKSPACE => Some(PermissionProfile::workspace_write()),
-        BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS => Some(PermissionProfile::Disabled),
-        _ => None,
-    }
 }
 
 fn legacy_sandbox_permission_profile(sandbox_mode: SandboxMode) -> PermissionProfile {
@@ -1412,24 +1395,7 @@ impl ThreadRequestProcessor {
             config.approvals_reviewer = approvals_reviewer;
         }
         if let Some(profile_name) = overrides.default_permissions.as_deref() {
-            let permission_profile = builtin_permission_profile(profile_name).ok_or_else(|| {
-                config_load_error_str(format!(
-                    "permission profile `{profile_name}` requires config reload"
-                ))
-            })?;
-            config
-                .permissions
-                .set_permission_profile_from_session_snapshot(
-                    codex_core::config::PermissionProfileSnapshot::active(
-                        permission_profile,
-                        ActivePermissionProfile::new(profile_name),
-                    ),
-                )
-                .map_err(|err| {
-                    config_load_error_str(format!(
-                        "permission profile `{profile_name}` is not allowed: {err}"
-                    ))
-                })?;
+            apply_builtin_permission_profile_to_config(config, profile_name)?;
         }
         if overrides.default_permissions.is_none()
             && let Some(sandbox_mode) = overrides.sandbox_mode
@@ -3454,7 +3420,6 @@ impl ThreadRequestProcessor {
                 ))
             })?;
         let history_cwd = Some(source_thread.cwd.clone());
-
         // Persist Windows sandbox mode.
         let mut cli_overrides = cli_overrides.unwrap_or_default();
         if cfg!(windows) {
