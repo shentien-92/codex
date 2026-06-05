@@ -83,6 +83,7 @@ storage / external system -> service / domain -> API / command -> UI / caller
 逐项确认：
 
 - 每个入口是否有相同的前置动作，例如重载 config、刷新权限、切换 cwd、重建 client、读取持久化状态。
+- 同名或同义入口是否存在于不止一层，例如 TUI slash command、app-server RPC、CLI/picker adapter。
 - 前置动作是否可能失败、阻塞、递归、消耗大量栈或触发外部 IO。
 - 前置动作失败时，是用户可见错误、非 fatal warning，还是会让主循环退出。
 - 修复时是否删掉或收敛了共享前置动作，而不是只跳过某一个命令。
@@ -92,6 +93,7 @@ storage / external system -> service / domain -> API / command -> UI / caller
 - 同类崩溃先在 `/new` 出现，之后又在 `/fork`、`/side`、`/btw` 出现。
 - 日志显示业务 RPC 还没发出，进程已经退出。
 - 单入口测试通过，但真实 TUI/主循环仍然崩溃。
+- TUI 入口修复后，app-server 同名 RPC 仍然重走旧的 config reload 或 session rebuild 路径。
 
 这类问题优先按“共享前置动作的归属错误”处理。只有在证明前置动作本身必须存在后，才考虑给它单独扩栈、后台化或降级错误。
 

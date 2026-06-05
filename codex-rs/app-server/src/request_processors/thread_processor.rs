@@ -1,7 +1,11 @@
 use super::*;
 use crate::error_code::method_not_found;
+use codex_protocol::models::ActivePermissionProfile;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
+use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
+use codex_protocol::models::PermissionProfile;
+use serde::de::DeserializeOwned;
 
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
@@ -17,6 +21,17 @@ struct ThreadListFilters {
     cwd_filters: Option<Vec<PathBuf>>,
     search_term: Option<String>,
     use_state_db_only: bool,
+}
+
+struct ThreadForkConfigPresence<'a> {
+    model: &'a Option<String>,
+    model_provider: &'a Option<String>,
+    cwd: &'a Option<String>,
+    runtime_workspace_roots: &'a Option<Vec<PathBuf>>,
+    approval_policy: Option<AskForApproval>,
+    approvals_reviewer: Option<codex_app_server_protocol::ApprovalsReviewer>,
+    sandbox: Option<SandboxMode>,
+    permissions: &'a Option<String>,
 }
 
 fn collect_resume_override_mismatches(
@@ -148,6 +163,71 @@ fn collect_resume_override_mismatches(
         );
     }
     mismatch_details
+}
+
+fn fork_request_carries_session_config(config: ThreadForkConfigPresence<'_>) -> bool {
+    config.model.is_some()
+        && config.model_provider.is_some()
+        && config.cwd.is_some()
+        && config.runtime_workspace_roots.is_some()
+        && config.approval_policy.is_some()
+        && config.approvals_reviewer.is_some()
+        && (config.sandbox.is_some()
+            || config
+                .permissions
+                .as_deref()
+                .is_some_and(is_builtin_permission_profile_name))
+}
+
+fn is_builtin_permission_profile_name(profile_name: &str) -> bool {
+    matches!(
+        profile_name,
+        BUILT_IN_PERMISSION_PROFILE_READ_ONLY
+            | BUILT_IN_PERMISSION_PROFILE_WORKSPACE
+            | BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS
+    )
+}
+
+fn builtin_permission_profile(profile_name: &str) -> Option<PermissionProfile> {
+    match profile_name {
+        BUILT_IN_PERMISSION_PROFILE_READ_ONLY => Some(PermissionProfile::read_only()),
+        BUILT_IN_PERMISSION_PROFILE_WORKSPACE => Some(PermissionProfile::workspace_write()),
+        BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS => Some(PermissionProfile::Disabled),
+        _ => None,
+    }
+}
+
+fn legacy_sandbox_permission_profile(sandbox_mode: SandboxMode) -> PermissionProfile {
+    match sandbox_mode {
+        SandboxMode::ReadOnly => PermissionProfile::read_only(),
+        SandboxMode::WorkspaceWrite => PermissionProfile::workspace_write(),
+        SandboxMode::DangerFullAccess => PermissionProfile::Disabled,
+    }
+}
+
+fn request_override_string<'a>(
+    key: &str,
+    value: &'a serde_json::Value,
+) -> Result<&'a str, JSONRPCErrorError> {
+    value
+        .as_str()
+        .ok_or_else(|| config_load_error_str(format!("`{key}` override must be a string")))
+}
+
+fn request_override_json_string<T: DeserializeOwned>(
+    key: &str,
+    value: &serde_json::Value,
+) -> Result<T, JSONRPCErrorError> {
+    serde_json::from_value(value.clone()).map_err(|err| {
+        config_load_error_str(format!("invalid `{key}` override value {value}: {err}"))
+    })
+}
+
+fn config_load_error_str(message: impl Into<String>) -> JSONRPCErrorError {
+    config_load_error(&std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        message.into(),
+    ))
 }
 
 fn merge_persisted_resume_metadata(
@@ -1272,6 +1352,157 @@ impl ThreadRequestProcessor {
             personality,
             ..Default::default()
         }
+    }
+
+    fn config_from_embedded_fork_request(
+        &self,
+        request_overrides: &Option<HashMap<String, serde_json::Value>>,
+        typesafe_overrides: &ConfigOverrides,
+    ) -> Result<Config, JSONRPCErrorError> {
+        let mut config = self.config.as_ref().clone();
+        self.apply_typesafe_config_overrides(&mut config, typesafe_overrides)?;
+        self.apply_request_config_overrides(&mut config, request_overrides)?;
+        Ok(config)
+    }
+
+    fn apply_typesafe_config_overrides(
+        &self,
+        config: &mut Config,
+        overrides: &ConfigOverrides,
+    ) -> Result<(), JSONRPCErrorError> {
+        if let Some(model) = overrides.model.as_ref() {
+            config.model = Some(model.clone());
+        }
+        if let Some(model_provider_id) = overrides.model_provider.as_ref() {
+            let model_provider = config
+                .model_providers
+                .get(model_provider_id)
+                .cloned()
+                .ok_or_else(|| {
+                    config_load_error_str(format!("Model provider `{model_provider_id}` not found"))
+                })?;
+            config.model_provider_id = model_provider_id.clone();
+            config.model_provider = model_provider;
+        }
+        if let Some(service_tier) = overrides.service_tier.as_ref() {
+            config.service_tier = service_tier.clone();
+        }
+        if let Some(cwd) = overrides.cwd.as_ref() {
+            config.cwd = AbsolutePathBuf::try_from(cwd.clone())
+                .map_err(|err| config_load_error_str(format!("invalid cwd override: {err}")))?;
+        }
+        if let Some(workspace_roots) = overrides.workspace_roots.as_ref() {
+            config.workspace_roots = workspace_roots
+                .iter()
+                .map(|path| AbsolutePathBuf::resolve_path_against_base(path, config.cwd.as_path()))
+                .collect();
+            config.workspace_roots_explicit = true;
+            config
+                .permissions
+                .set_workspace_roots(config.workspace_roots.clone());
+        }
+        if let Some(approval_policy) = overrides.approval_policy
+            && let Err(err) = config.permissions.approval_policy.set(approval_policy)
+        {
+            return Err(config_load_error_str(format!(
+                "approval policy override is not allowed: {err}"
+            )));
+        }
+        if let Some(approvals_reviewer) = overrides.approvals_reviewer {
+            config.approvals_reviewer = approvals_reviewer;
+        }
+        if let Some(profile_name) = overrides.default_permissions.as_deref() {
+            let permission_profile = builtin_permission_profile(profile_name).ok_or_else(|| {
+                config_load_error_str(format!(
+                    "permission profile `{profile_name}` requires config reload"
+                ))
+            })?;
+            config
+                .permissions
+                .set_permission_profile_from_session_snapshot(
+                    codex_core::config::PermissionProfileSnapshot::active(
+                        permission_profile,
+                        ActivePermissionProfile::new(profile_name),
+                    ),
+                )
+                .map_err(|err| {
+                    config_load_error_str(format!(
+                        "permission profile `{profile_name}` is not allowed: {err}"
+                    ))
+                })?;
+        }
+        if overrides.default_permissions.is_none()
+            && let Some(sandbox_mode) = overrides.sandbox_mode
+        {
+            let permission_profile = legacy_sandbox_permission_profile(sandbox_mode.into());
+            config
+                .permissions
+                .set_permission_profile(permission_profile)
+                .map_err(|err| {
+                    config_load_error_str(format!("sandbox override is not allowed: {err}"))
+                })?;
+        }
+        if let Some(base_instructions) = overrides.base_instructions.as_ref() {
+            config.base_instructions = Some(base_instructions.clone());
+        }
+        if let Some(developer_instructions) = overrides.developer_instructions.as_ref() {
+            config.developer_instructions = Some(developer_instructions.clone());
+        }
+        if let Some(personality) = overrides.personality {
+            config.personality = Some(personality);
+        }
+        if let Some(ephemeral) = overrides.ephemeral {
+            config.ephemeral = ephemeral;
+        }
+        config.codex_linux_sandbox_exe = overrides.codex_linux_sandbox_exe.clone();
+        config.main_execve_wrapper_exe = overrides.main_execve_wrapper_exe.clone();
+        Ok(())
+    }
+
+    fn apply_request_config_overrides(
+        &self,
+        config: &mut Config,
+        request_overrides: &Option<HashMap<String, serde_json::Value>>,
+    ) -> Result<(), JSONRPCErrorError> {
+        let Some(request_overrides) = request_overrides else {
+            return Ok(());
+        };
+        for (key, value) in request_overrides {
+            match key.as_str() {
+                "model_reasoning_effort" => {
+                    let value = request_override_string(key, value)?;
+                    config.model_reasoning_effort =
+                        Some(value.parse().map_err(config_load_error_str)?);
+                }
+                "model_reasoning_summary" => {
+                    config.model_reasoning_summary =
+                        Some(request_override_json_string(key, value)?);
+                }
+                "model_verbosity" => {
+                    config.model_verbosity = Some(request_override_json_string(key, value)?);
+                }
+                "personality" => {
+                    config.personality = Some(request_override_json_string(key, value)?);
+                }
+                "web_search" => {
+                    let web_search_mode = request_override_json_string(key, value)?;
+                    config.web_search_mode.set(web_search_mode).map_err(|err| {
+                        config_load_error_str(format!("web_search override is not allowed: {err}"))
+                    })?;
+                }
+                "bypass_hook_trust" => {
+                    config.bypass_hook_trust = value.as_bool().ok_or_else(|| {
+                        config_load_error_str("`bypass_hook_trust` override must be a boolean")
+                    })?;
+                }
+                _ => {
+                    return Err(config_load_error_str(format!(
+                        "unsupported fork config override `{key}`"
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn parse_environment_selections(
@@ -3246,6 +3477,17 @@ impl ThreadRequestProcessor {
         } else {
             Some(cli_overrides)
         };
+        let carries_session_config =
+            fork_request_carries_session_config(ThreadForkConfigPresence {
+                model: &model,
+                model_provider: &model_provider,
+                cwd: &cwd,
+                runtime_workspace_roots: &runtime_workspace_roots,
+                approval_policy,
+                approvals_reviewer,
+                sandbox,
+                permissions: &permissions,
+            });
         let mut typesafe_overrides = self.build_thread_config_overrides(
             model,
             model_provider,
@@ -3262,11 +3504,14 @@ impl ThreadRequestProcessor {
         );
         typesafe_overrides.ephemeral = ephemeral.then_some(true);
         // Derive a Config using the same logic as new conversation, honoring overrides if provided.
-        let config = self
-            .config_manager
-            .load_for_cwd(request_overrides, typesafe_overrides, history_cwd)
-            .await
-            .map_err(|err| config_load_error(&err))?;
+        let config = if carries_session_config {
+            self.config_from_embedded_fork_request(&request_overrides, &typesafe_overrides)?
+        } else {
+            self.config_manager
+                .load_for_cwd(request_overrides, typesafe_overrides, history_cwd)
+                .await
+                .map_err(|err| config_load_error(&err))?
+        };
 
         let fallback_model_provider = config.model_provider_id.clone();
         let instruction_sources = Self::instruction_sources_from_config(&config).await;

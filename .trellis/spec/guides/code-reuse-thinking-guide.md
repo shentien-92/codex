@@ -57,6 +57,7 @@ rg "field_name"
 
 - helper 名称看起来是 `best_effort`，但内部可能触发主循环退出、栈溢出、外部 IO 或重建大对象。
 - 上一次修复只删了 `/new` 的调用，后续 `/fork`、`/side`、`/btw` 继续走同一 helper。
+- 只删掉了 TUI 调用点，但 app-server RPC 或 CLI adapter 里仍复制了同一副作用。
 - 测试只验证“错误被显示”，没有验证“业务 RPC 是否真的到达”或“进程没有退出”。
 
 ---

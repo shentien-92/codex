@@ -29,6 +29,7 @@ use codex_app_server_protocol::TurnStatus;
 use codex_app_server_protocol::UserInput;
 use codex_config::types::AuthCredentialsStoreMode;
 use codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR;
+use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 use serde_json::json;
@@ -457,6 +458,67 @@ async fn thread_fork_rejects_unmaterialized_thread() -> Result<()> {
         "unexpected fork error: {}",
         fork_err.error.message
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn thread_fork_with_full_session_config_does_not_reload_disk_config() -> Result<()> {
+    let server = create_mock_responses_server_repeating_assistant("Done").await;
+    let codex_home = TempDir::new()?;
+    create_config_toml(codex_home.path(), &server.uri())?;
+
+    let conversation_id = create_fake_rollout(
+        codex_home.path(),
+        "2025-01-05T12-00-00",
+        "2025-01-05T12:00:00Z",
+        "Saved user message",
+        Some("mock_provider"),
+        /*git_info*/ None,
+    )?;
+
+    let mut mcp = McpProcess::new(codex_home.path()).await?;
+    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
+    std::fs::write(codex_home.path().join("config.toml"), "[broken")?;
+
+    let fork_id = mcp
+        .send_thread_fork_request(ThreadForkParams {
+            thread_id: conversation_id,
+            model: Some("mock-model".to_string()),
+            model_provider: Some("mock_provider".to_string()),
+            cwd: Some(codex_home.path().to_string_lossy().to_string()),
+            runtime_workspace_roots: Some(vec![codex_home.path().to_path_buf()]),
+            approval_policy: Some(codex_app_server_protocol::AskForApproval::Never),
+            approvals_reviewer: Some(codex_app_server_protocol::ApprovalsReviewer::User),
+            permissions: Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY.to_string()),
+            thread_source: Some(ThreadSource::User),
+            ..Default::default()
+        })
+        .await?;
+    let fork_resp: JSONRPCResponse = timeout(
+        DEFAULT_READ_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(fork_id)),
+    )
+    .await??;
+    let ThreadForkResponse {
+        thread,
+        model,
+        model_provider,
+        cwd,
+        active_permission_profile,
+        ..
+    } = to_response::<ThreadForkResponse>(fork_resp)?;
+
+    assert_eq!(model, "mock-model");
+    assert_eq!(model_provider, "mock_provider");
+    assert_eq!(cwd.as_path(), codex_home.path());
+    assert_eq!(
+        active_permission_profile
+            .as_ref()
+            .map(|profile| profile.id.as_str()),
+        Some(BUILT_IN_PERMISSION_PROFILE_READ_ONLY)
+    );
+    assert_eq!(thread.preview, "Saved user message");
 
     Ok(())
 }
