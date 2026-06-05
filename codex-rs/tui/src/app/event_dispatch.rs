@@ -146,16 +146,9 @@ impl App {
                 self.chat_widget
                     .add_plain_history_lines(vec!["/fork".magenta().into()]);
                 if let Some(thread_id) = self.chat_widget.thread_id() {
-                    let fork_target = ThreadForkTarget::with_rollout_path(
-                        thread_id,
-                        self.chat_widget.rollout_path(),
-                    );
                     self.refresh_in_memory_config_from_disk_best_effort("forking the thread")
                         .await;
-                    match app_server
-                        .fork_thread(self.config.clone(), fork_target)
-                        .await
-                    {
+                    match app_server.fork_thread(self.config.clone(), thread_id).await {
                         Ok(forked) => {
                             self.shutdown_current_thread(app_server).await;
                             match self

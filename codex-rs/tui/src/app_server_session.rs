@@ -191,21 +191,6 @@ pub(crate) struct AppServerStartedThread {
     pub(crate) turns: Vec<Turn>,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct ThreadForkTarget {
-    pub(crate) thread_id: ThreadId,
-    pub(crate) rollout_path: Option<PathBuf>,
-}
-
-impl ThreadForkTarget {
-    pub(crate) fn with_rollout_path(thread_id: ThreadId, rollout_path: Option<PathBuf>) -> Self {
-        Self {
-            thread_id,
-            rollout_path,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TurnPermissionsOverride {
     /// Leave the app-server thread's sticky permission profile unchanged.
@@ -471,7 +456,7 @@ impl AppServerSession {
     pub(crate) async fn fork_thread(
         &mut self,
         config: Config,
-        target: ThreadForkTarget,
+        thread_id: ThreadId,
     ) -> Result<AppServerStartedThread> {
         let request_id = self.next_request_id();
         let session_config = self.session_config_with_effective_service_tier(&config);
@@ -481,7 +466,7 @@ impl AppServerSession {
                 request_id,
                 params: thread_fork_params_from_config(
                     session_config,
-                    target,
+                    thread_id,
                     self.thread_params_mode(),
                     self.remote_cwd_override.as_deref(),
                 ),
@@ -1465,14 +1450,10 @@ fn thread_resume_params_from_config(
 
 fn thread_fork_params_from_config(
     config: Config,
-    target: ThreadForkTarget,
+    thread_id: ThreadId,
     thread_params_mode: ThreadParamsMode,
     remote_cwd_override: Option<&std::path::Path>,
 ) -> ThreadForkParams {
-    let ThreadForkTarget {
-        thread_id,
-        rollout_path,
-    } = target;
     let permissions = permissions_selection_from_config(&config, thread_params_mode);
     let sandbox = permissions
         .is_none()
@@ -1485,7 +1466,6 @@ fn thread_fork_params_from_config(
         .flatten();
     ThreadForkParams {
         thread_id: thread_id.to_string(),
-        path: rollout_path,
         model: config.model.clone(),
         model_provider: thread_params_mode.model_provider_from_config(&config),
         service_tier: service_tier_override_from_config(&config),
@@ -2039,7 +2019,7 @@ mod tests {
         );
         let fork = thread_fork_params_from_config(
             config,
-            ThreadForkTarget::with_rollout_path(thread_id, /*rollout_path*/ None),
+            thread_id,
             ThreadParamsMode::Remote,
             /*remote_cwd_override*/ None,
         );
@@ -2156,7 +2136,7 @@ mod tests {
         );
         let fork = thread_fork_params_from_config(
             config,
-            ThreadForkTarget::with_rollout_path(thread_id, /*rollout_path*/ None),
+            thread_id,
             ThreadParamsMode::Remote,
             Some(remote_cwd.as_path()),
         );
@@ -2207,7 +2187,7 @@ mod tests {
         );
         let fork = thread_fork_params_from_config(
             config,
-            ThreadForkTarget::with_rollout_path(thread_id, /*rollout_path*/ None),
+            thread_id,
             ThreadParamsMode::Embedded,
             /*remote_cwd_override*/ None,
         );
@@ -2261,7 +2241,7 @@ mod tests {
 
         let params = thread_fork_params_from_config(
             config,
-            ThreadForkTarget::with_rollout_path(thread_id, /*rollout_path*/ None),
+            thread_id,
             ThreadParamsMode::Embedded,
             /*remote_cwd_override*/ None,
         );
@@ -2271,24 +2251,6 @@ mod tests {
             params.developer_instructions.as_deref(),
             Some("Developer override.")
         );
-    }
-
-    #[tokio::test]
-    async fn thread_fork_params_forward_rollout_path() {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let config = build_config(&temp_dir).await;
-        let thread_id = ThreadId::new();
-        let rollout_path = temp_dir.path().join("rollout.jsonl");
-
-        let params = thread_fork_params_from_config(
-            config,
-            ThreadForkTarget::with_rollout_path(thread_id, Some(rollout_path.clone())),
-            ThreadParamsMode::Embedded,
-            /*remote_cwd_override*/ None,
-        );
-
-        assert_eq!(params.thread_id, thread_id.to_string());
-        assert_eq!(params.path, Some(rollout_path));
     }
 
     #[tokio::test]
