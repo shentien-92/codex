@@ -16,8 +16,8 @@ const SIDE_RENAME_BLOCK_MESSAGE: &str = "Side conversations are ephemeral and ca
 const SIDE_MAIN_THREAD_UNAVAILABLE_MESSAGE: &str =
     "'/side' is unavailable until the main thread is ready.";
 const SIDE_NO_STARTED_CONVERSATION_MESSAGE: &str = concat!(
-    "'/side' is unavailable until the current conversation has started. ",
-    "Send a message first, then try /side again."
+    "'/side' and '/btw' are unavailable until the current conversation has started. ",
+    "Send a message first, then try again."
 );
 const SIDE_ALREADY_OPEN_MESSAGE: &str =
     "A side conversation is already open. Press Ctrl+C to return before starting another.";
@@ -134,7 +134,29 @@ mod tests {
 
         assert_eq!(
             App::side_start_error_message(&err),
-            "'/side' is unavailable until the current conversation has started. Send a message first, then try /side again."
+            "'/side' and '/btw' are unavailable until the current conversation has started. Send a message first, then try again."
+        );
+    }
+
+    #[test]
+    fn fork_current_session_error_message_explains_missing_first_prompt() {
+        let err = color_eyre::eyre::eyre!(
+            "thread/fork failed during TUI bootstrap: thread/fork failed: no rollout found for thread id 019da1a1-bed9-7a43-88a2-b49d43915021"
+        );
+
+        assert_eq!(
+            App::fork_current_session_error_message(&err),
+            "'/fork' is unavailable until the current conversation has started. Send a message first, then try /fork again."
+        );
+    }
+
+    #[test]
+    fn fork_current_session_error_message_uses_generic_fork_wording() {
+        let err = color_eyre::eyre::eyre!("transport disconnected");
+
+        assert_eq!(
+            App::fork_current_session_error_message(&err),
+            "Failed to fork current session through the app server: transport disconnected"
         );
     }
 
@@ -481,15 +503,27 @@ impl App {
         }
     }
 
-    pub(super) fn side_start_error_message(err: &color_eyre::Report) -> String {
-        if err.chain().any(|cause| {
+    pub(super) fn fork_source_unavailable_until_started(err: &color_eyre::Report) -> bool {
+        err.chain().any(|cause| {
             let message = cause.to_string();
             message.contains("no rollout found for thread id")
                 || message.contains("includeTurns is unavailable before first user message")
-        }) {
+        })
+    }
+
+    pub(super) fn side_start_error_message(err: &color_eyre::Report) -> String {
+        if Self::fork_source_unavailable_until_started(err) {
             SIDE_NO_STARTED_CONVERSATION_MESSAGE.to_string()
         } else {
             format!("Failed to start side conversation: {err}")
+        }
+    }
+
+    pub(super) fn fork_current_session_error_message(err: &color_eyre::Report) -> String {
+        if Self::fork_source_unavailable_until_started(err) {
+            "'/fork' is unavailable until the current conversation has started. Send a message first, then try /fork again.".to_string()
+        } else {
+            format!("Failed to fork current session through the app server: {err}")
         }
     }
 
@@ -547,12 +581,12 @@ impl App {
         app_server: &mut AppServerSession,
         parent_thread_id: ThreadId,
         mut user_message: Option<crate::chatwidget::UserMessage>,
-    ) -> Result<AppRunControl> {
+    ) {
         if let Some(message) = self.side_start_block_message() {
             self.restore_side_user_message(user_message.take());
             self.sync_side_thread_ui();
             self.chat_widget.add_error_message(message.to_string());
-            return Ok(AppRunControl::Continue);
+            return;
         }
 
         self.session_telemetry.counter(
@@ -584,7 +618,7 @@ impl App {
                     self.chat_widget.add_error_message(format!(
                         "Failed to prepare side conversation {child_thread_id}: {err}"
                     ));
-                    return Ok(AppRunControl::Continue);
+                    return;
                 }
                 if let Err(err) = self
                     .select_agent_thread_and_discard_side(tui, app_server, child_thread_id)
@@ -607,7 +641,7 @@ impl App {
                     self.chat_widget.add_error_message(format!(
                         "Failed to switch into side conversation {child_thread_id}: {err}"
                     ));
-                    return Ok(AppRunControl::Continue);
+                    return;
                 }
                 if self.active_thread_id == Some(child_thread_id) {
                     if let Some(user_message) = user_message.take() {
@@ -632,7 +666,5 @@ impl App {
                     .add_error_message(Self::side_start_error_message(&err));
             }
         }
-
-        Ok(AppRunControl::Continue)
     }
 }

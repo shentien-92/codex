@@ -128,7 +128,6 @@ pub(crate) struct ThreadInputState {
     pub(super) user_turn_pending_start: bool,
     pub(super) current_collaboration_mode: CollaborationMode,
     pub(super) active_collaboration_mask: Option<CollaborationModeMask>,
-    pub(super) task_running: bool,
     pub(super) agent_turn_running: bool,
 }
 

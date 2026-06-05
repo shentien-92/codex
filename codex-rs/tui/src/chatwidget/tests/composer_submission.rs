@@ -996,7 +996,6 @@ async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
         user_turn_pending_start: false,
         current_collaboration_mode: chat.current_collaboration_mode.clone(),
         active_collaboration_mask: chat.active_collaboration_mask.clone(),
-        task_running: true,
         agent_turn_running: true,
     }));
 
@@ -1008,6 +1007,30 @@ async fn restore_thread_input_state_syncs_sleep_inhibitor_state() {
 
     assert!(!chat.turn_lifecycle.agent_turn_running);
     assert!(!chat.turn_lifecycle.sleep_inhibitor.is_turn_running());
+    assert!(!chat.bottom_pane.is_task_running());
+}
+
+#[tokio::test]
+async fn restore_thread_input_state_clears_stale_task_running_footer() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.bottom_pane.set_task_running(/*running*/ true);
+
+    chat.restore_thread_input_state(Some(ThreadInputState {
+        composer: None,
+        pending_steers: VecDeque::new(),
+        pending_steer_history_records: VecDeque::new(),
+        pending_steer_compare_keys: VecDeque::new(),
+        rejected_steers_queue: VecDeque::new(),
+        rejected_steer_history_records: VecDeque::new(),
+        queued_user_messages: VecDeque::new(),
+        queued_user_message_history_records: VecDeque::new(),
+        user_turn_pending_start: false,
+        current_collaboration_mode: chat.current_collaboration_mode.clone(),
+        active_collaboration_mask: chat.active_collaboration_mask.clone(),
+        agent_turn_running: false,
+    }));
+
+    assert!(!chat.turn_lifecycle.agent_turn_running);
     assert!(!chat.bottom_pane.is_task_running());
 }
 
